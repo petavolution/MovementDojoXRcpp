@@ -1,0 +1,356 @@
+#usda 1.0
+(
+    defaultPrim = "Dojo"
+    upAxis = "Y"
+    metersPerUnit = 1.0
+)
+
+# Dojo environment with training areas
+# Use variants to switch between layouts
+
+def Xform "Dojo" (
+    kind = "assembly"
+)
+{
+    def Mesh "MainFloor"
+    {
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-15.0, 0, -15.0), (15.0, 0, -15.0), (15.0, 0, 15.0), (-15.0, 0, 15.0)]
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)]
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.12, 0.12, 0.15)]
+    }
+    
+    def Cube "CentralPlatform"
+    {
+        double size = 6.0
+        double3 xformOp:translate = (0, 0.15, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.18, 0.18, 0.22)]
+    }
+    
+    def Cylinder "OuterPillar_0"
+    {
+        double radius = 0.3
+        double height = 4.0
+        double3 xformOp:translate = (0.0, 2, 5.0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.2, 0.2, 0.25)]
+    }
+    
+    def Cylinder "OuterPillar_1"
+    {
+        double radius = 0.3
+        double height = 4.0
+        double3 xformOp:translate = (3.5355339059327373, 2, 3.5355339059327378)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.2, 0.2, 0.25)]
+    }
+    
+    def Cylinder "OuterPillar_2"
+    {
+        double radius = 0.3
+        double height = 4.0
+        double3 xformOp:translate = (5.0, 2, 3.061616997868383e-16)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.2, 0.2, 0.25)]
+    }
+    
+    def Cylinder "OuterPillar_3"
+    {
+        double radius = 0.3
+        double height = 4.0
+        double3 xformOp:translate = (3.5355339059327378, 2, -3.5355339059327373)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.2, 0.2, 0.25)]
+    }
+    
+    def Cylinder "OuterPillar_4"
+    {
+        double radius = 0.3
+        double height = 4.0
+        double3 xformOp:translate = (6.123233995736766e-16, 2, -5.0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.2, 0.2, 0.25)]
+    }
+    
+    def Cylinder "OuterPillar_5"
+    {
+        double radius = 0.3
+        double height = 4.0
+        double3 xformOp:translate = (-3.5355339059327373, 2, -3.5355339059327386)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.2, 0.2, 0.25)]
+    }
+    
+    def Cylinder "OuterPillar_6"
+    {
+        double radius = 0.3
+        double height = 4.0
+        double3 xformOp:translate = (-5.0, 2, -9.184850993605148e-16)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.2, 0.2, 0.25)]
+    }
+    
+    def Cylinder "OuterPillar_7"
+    {
+        double radius = 0.3
+        double height = 4.0
+        double3 xformOp:translate = (-3.5355339059327386, 2, 3.535533905932737)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+        color3f[] primvars:displayColor = [(0.2, 0.2, 0.25)]
+    }
+    
+    def Xform "PostureZone"
+    {
+        def Cube "PostureZone_Floor"
+        {
+            double size = 3.0
+            double3 xformOp:translate = (-4, 0.05, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.1, 0.3, 0.1)]
+        }
+        
+    }
+    
+    def Xform "CombatZone"
+    {
+        def Cube "CombatZone_Floor"
+        {
+            double size = 3.0
+            double3 xformOp:translate = (4, 0.05, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.3, 0.1, 0.1)]
+        }
+        
+    }
+    
+    def Xform "PathZone"
+    {
+        def Cube "PathZone_Floor"
+        {
+            double size = 3.0
+            double3 xformOp:translate = (0, 0.05, 4)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.1, 0.1, 0.3)]
+        }
+        
+    }
+    
+    def Xform "DroneMount_0"
+    {
+        def Cylinder "DronePole_0"
+        {
+            double radius = 0.02
+            double height = 1.2
+            double3 xformOp:translate = (0.0, 0.6, 3.0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.3, 0.3, 0.35)]
+        }
+        
+        def Sphere "Drone_0"
+        {
+            double radius = 0.12
+            double3 xformOp:translate = (0.0, 1.3499999999999999, 3.0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(1.0, 0.4, 0.1)]
+        }
+        
+    }
+    
+    def Xform "DroneMount_1"
+    {
+        def Cylinder "DronePole_1"
+        {
+            double radius = 0.02
+            double height = 1.6
+            double3 xformOp:translate = (2.598076211353316, 0.8, 1.5000000000000004)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.3, 0.3, 0.35)]
+        }
+        
+        def Sphere "Drone_1"
+        {
+            double radius = 0.12
+            double3 xformOp:translate = (2.598076211353316, 1.75, 1.5000000000000004)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(1.0, 0.4, 0.1)]
+        }
+        
+    }
+    
+    def Xform "DroneMount_2"
+    {
+        def Cylinder "DronePole_2"
+        {
+            double radius = 0.02
+            double height = 2.0
+            double3 xformOp:translate = (2.598076211353316, 1.0, -1.4999999999999993)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.3, 0.3, 0.35)]
+        }
+        
+        def Sphere "Drone_2"
+        {
+            double radius = 0.12
+            double3 xformOp:translate = (2.598076211353316, 2.15, -1.4999999999999993)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(1.0, 0.4, 0.1)]
+        }
+        
+    }
+    
+    def Xform "DroneMount_3"
+    {
+        def Cylinder "DronePole_3"
+        {
+            double radius = 0.02
+            double height = 1.2
+            double3 xformOp:translate = (3.6739403974420594e-16, 0.6, -3.0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.3, 0.3, 0.35)]
+        }
+        
+        def Sphere "Drone_3"
+        {
+            double radius = 0.12
+            double3 xformOp:translate = (3.6739403974420594e-16, 1.3499999999999999, -3.0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(1.0, 0.4, 0.1)]
+        }
+        
+    }
+    
+    def Xform "DroneMount_4"
+    {
+        def Cylinder "DronePole_4"
+        {
+            double radius = 0.02
+            double height = 1.6
+            double3 xformOp:translate = (-2.598076211353315, 0.8, -1.5000000000000013)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.3, 0.3, 0.35)]
+        }
+        
+        def Sphere "Drone_4"
+        {
+            double radius = 0.12
+            double3 xformOp:translate = (-2.598076211353315, 1.75, -1.5000000000000013)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(1.0, 0.4, 0.1)]
+        }
+        
+    }
+    
+    def Xform "DroneMount_5"
+    {
+        def Cylinder "DronePole_5"
+        {
+            double radius = 0.02
+            double height = 2.0
+            double3 xformOp:translate = (-2.598076211353316, 1.0, 1.5000000000000004)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.3, 0.3, 0.35)]
+        }
+        
+        def Sphere "Drone_5"
+        {
+            double radius = 0.12
+            double3 xformOp:translate = (-2.598076211353316, 2.15, 1.5000000000000004)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(1.0, 0.4, 0.1)]
+        }
+        
+    }
+    
+    def Xform "Decorations"
+    {
+        def Sphere "AmbientOrb_0"
+        {
+            double radius = 0.3
+            double3 xformOp:translate = (-6, 0.5, -6)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.2, 0.5, 0.8)]
+        }
+        
+        def Sphere "AmbientOrb_1"
+        {
+            double radius = 0.3
+            double3 xformOp:translate = (6, 0.5, -6)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.2, 0.5, 0.8)]
+        }
+        
+        def Sphere "AmbientOrb_2"
+        {
+            double radius = 0.3
+            double3 xformOp:translate = (-6, 0.5, 6)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.2, 0.5, 0.8)]
+        }
+        
+        def Sphere "AmbientOrb_3"
+        {
+            double radius = 0.3
+            double3 xformOp:translate = (6, 0.5, 6)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+            color3f[] primvars:displayColor = [(0.2, 0.5, 0.8)]
+        }
+        
+    }
+    
+    def Xform "LightRig"
+    {
+        def DistantLight "SunKey"
+        {
+            float inputs:intensity = 0.7
+            color3f inputs:color = (1, 0.95, 0.9)
+            float3 xformOp:rotateXYZ = (55, -40, 0)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+        }
+        
+        def DistantLight "SkyFill"
+        {
+            float inputs:intensity = 0.2
+            color3f inputs:color = (0.6, 0.7, 1.0)
+            float3 xformOp:rotateXYZ = (-30, 60, 0)
+            uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+        }
+        
+        def SphereLight "RingLight_0"
+        {
+            float inputs:intensity = 300.0
+            color3f inputs:color = (0.8, 0.6, 0.4)
+            double3 xformOp:translate = (2.82842712474619, 4, 2.8284271247461903)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        
+        def SphereLight "RingLight_1"
+        {
+            float inputs:intensity = 300.0
+            color3f inputs:color = (0.8, 0.6, 0.4)
+            double3 xformOp:translate = (2.8284271247461903, 4, -2.82842712474619)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        
+        def SphereLight "RingLight_2"
+        {
+            float inputs:intensity = 300.0
+            color3f inputs:color = (0.8, 0.6, 0.4)
+            double3 xformOp:translate = (-2.82842712474619, 4, -2.8284271247461907)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        
+        def SphereLight "RingLight_3"
+        {
+            float inputs:intensity = 300.0
+            color3f inputs:color = (0.8, 0.6, 0.4)
+            double3 xformOp:translate = (-2.8284271247461907, 4, 2.8284271247461894)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+        
+    }
+    
+}
