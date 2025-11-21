@@ -76,6 +76,9 @@ public:
     // Event polling
     void pollEvents();
 
+    // Head pose (convenience method)
+    Transform getHeadPose() const;
+
 private:
     bool createInstance(const AppConfig& config);
     bool getSystem();

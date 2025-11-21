@@ -206,6 +206,20 @@ void MovementAnalytics::recordSample(const Transform& head,
     m_lastSampleTime = currentTime;
 }
 
+void MovementAnalytics::recordSample(double deltaTime, const Transform& head,
+                                     const ControllerState& leftController,
+                                     const ControllerState& rightController) {
+    // Just forward to the main implementation - deltaTime is calculated internally
+    (void)deltaTime;
+    recordSample(head, leftController, rightController);
+}
+
+void MovementAnalytics::initialize(const MovementAnalyticsConfig& config) {
+    m_voxelSize = config.voxelResolution;
+    m_targetSampleRate = config.sampleRate;
+    initializeMovementSpace();
+}
+
 void MovementAnalytics::calculateDerivedValues(MovementSample& sample) {
     // Transform hand positions to head-relative space
     sample.leftHandRelative = worldToHeadSpace(sample.leftHandPosition,

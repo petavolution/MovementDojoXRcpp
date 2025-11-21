@@ -507,4 +507,25 @@ bool XRSession::releaseSwapchainImage(int viewIndex) {
     return true;
 }
 
+Transform XRSession::getHeadPose() const {
+    Transform result;
+    result.position = Vec3(0, 0, 0);
+    result.orientation = Quat::identity();
+    result.scale = Vec3(1, 1, 1);
+
+    // If we have views, the head pose is roughly the midpoint between the eyes
+    if (m_views.size() >= 2) {
+        Vec3 leftPos = m_views[0].pose.position;
+        Vec3 rightPos = m_views[1].pose.position;
+        result.position = (leftPos + rightPos) * 0.5f;
+        // Use left eye orientation as head orientation (close enough)
+        result.orientation = m_views[0].pose.orientation;
+    } else if (m_views.size() == 1) {
+        result.position = m_views[0].pose.position;
+        result.orientation = m_views[0].pose.orientation;
+    }
+
+    return result;
+}
+
 } // namespace lst

@@ -129,6 +129,14 @@ enum class MovementPattern {
 // Callback for real-time analysis events
 using AnalyticsCallback = std::function<void(const std::string& event, const std::string& data)>;
 
+// Configuration for MovementAnalytics
+struct MovementAnalyticsConfig {
+    bool recordFullPose = true;
+    float voxelResolution = 0.1f;  // 10cm default
+    double historyDuration = 3600.0;  // 1 hour default
+    int sampleRate = 90;  // 90Hz default
+};
+
 class MovementAnalytics {
 public:
     MovementAnalytics();
@@ -141,8 +149,18 @@ public:
     void resumeSession();
     bool isRecording() const { return m_isRecording; }
 
+    // Aliases for SessionManager compatibility
+    void startRecording() { startSession(); }
+    void stopRecording() { endSession(); }
+    void initialize(const struct MovementAnalyticsConfig& config);
+
     // Data recording (call every frame)
     void recordSample(const Transform& head,
+                      const ControllerState& leftController,
+                      const ControllerState& rightController);
+
+    // Alternative signature for SessionManager
+    void recordSample(double deltaTime, const Transform& head,
                       const ControllerState& leftController,
                       const ControllerState& rightController);
 
@@ -163,6 +181,7 @@ public:
 
     // Historical data
     const std::deque<MovementSample>& getRecentSamples(int count = 1000) const;
+    const std::deque<MovementSample>& getSamples() const { return m_samples; }
     std::vector<Vec3> getMovementTrail(int trackedPoint, float duration) const;
 
     // Visualization data generation
