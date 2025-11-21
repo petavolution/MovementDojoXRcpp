@@ -9,6 +9,7 @@
 #include "core/Renderer.h"
 #include "core/Input.h"
 #include "core/SessionManager.h"
+#include "visualization/MovementVisualizer.h"
 #include "usd/USDLoader.h"
 #include "haptics/HapticManager.h"
 #include "physics/PhysicsEngine.h"

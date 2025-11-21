@@ -98,11 +98,21 @@ void GuidedStretchMode::update(double deltaTime, const ControllerState& left,
 
     const StretchPose& currentPose = m_sequence[m_currentPoseIndex];
 
-    // Calculate head-relative hand positions
-    Vec3 leftRelative = left.position;   // Should be made head-relative
-    Vec3 rightRelative = right.position;
+    // Get head-relative hand positions from MovementAnalytics samples
+    // The analytics system already calculates head-relative positions
+    Vec3 leftRelative = left.pose.position;
+    Vec3 rightRelative = right.pose.position;
 
-    // Check if hands are at target positions
+    // If we have analytics with recent samples, use the head-relative positions
+    if (m_analytics) {
+        const auto& samples = m_analytics->getSamples();
+        if (!samples.empty()) {
+            leftRelative = samples.back().leftHandRelative;
+            rightRelative = samples.back().rightHandRelative;
+        }
+    }
+
+    // Check if hands are at target positions (in head-relative space)
     float leftDist = (leftRelative - currentPose.leftHandTarget).length();
     float rightDist = (rightRelative - currentPose.rightHandTarget).length();
 
@@ -583,11 +593,9 @@ void FlowStateMode::updateFlowTargets(const MovementSample& sample) {
         if (leftDir.length() < 0.15f || rightDir.length() < 0.15f) {
             // Generate new position in a semi-random direction
             // but biased toward unexplored areas
-            std::random_device rd;
-            std::mt19937 gen(rd());
             std::uniform_real_distribution<float> dist(-0.6f, 0.6f);
 
-            target = Vec3(dist(gen), 0.1f + dist(gen) * 0.4f, -0.3f + dist(gen) * 0.3f);
+            target = Vec3(dist(m_rng), 0.1f + dist(m_rng) * 0.4f, -0.3f + dist(m_rng) * 0.3f);
         }
     }
 }

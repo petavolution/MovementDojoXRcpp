@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <random>
 
 namespace lst {
 
@@ -252,6 +253,9 @@ private:
     // Dynamic targets that move based on user's movement
     std::vector<Vec3> m_flowTargets;
     void updateFlowTargets(const MovementSample& sample);
+
+    // Random generator (initialized once for performance)
+    std::mt19937 m_rng{std::random_device{}()};
 };
 
 } // namespace lst

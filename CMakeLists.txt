@@ -140,6 +140,10 @@ set(OVERLAY_SOURCES
     src/overlay/OverlaySystem.cpp
 )
 
+set(VISUALIZATION_SOURCES
+    src/visualization/MovementVisualizer.cpp
+)
+
 set(HAPTIC_SOURCES
     src/haptics/HapticManager.cpp
 )
@@ -157,6 +161,7 @@ add_executable(lightsaber_trainer
     ${ANALYTICS_SOURCES}
     ${PROGRESSION_SOURCES}
     ${OVERLAY_SOURCES}
+    ${VISUALIZATION_SOURCES}
     ${HAPTIC_SOURCES}
     ${PHYSICS_SOURCES}
 )
