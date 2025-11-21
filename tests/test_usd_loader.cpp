@@ -257,7 +257,7 @@ void testGenerateWithLights() {
 // Test Runner
 // =============================================================================
 
-int runUSDTests() {
+int runUSDLoaderTests() {
     std::cout << "Running USD Loader Tests..." << std::endl;
 
     testLoadSimpleCube();
@@ -284,37 +284,4 @@ TEST(USDTest, GenerateScene) { testGenerateScene(); }
 TEST(USDTest, GenerateWithLights) { testGenerateWithLights(); }
 #endif
 
-// =============================================================================
-// Main (when not using GTest)
-// =============================================================================
-
-#if !USE_GTEST
-// External declaration of math tests
-extern int runMathTests();
-
-int main(int argc, char* argv[]) {
-    bool runMath = true;
-    bool runUSD = true;
-
-    // Parse arguments
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--math") == 0) {
-            runUSD = false;
-        } else if (strcmp(argv[i], "--usd") == 0) {
-            runMath = false;
-        }
-    }
-
-    int result = 0;
-
-    if (runMath) {
-        result |= runMathTests();
-    }
-
-    if (runUSD) {
-        result |= runUSDTests();
-    }
-
-    return result;
-}
-#endif
+// Note: main() is provided by test_main.cpp when not using GTest
