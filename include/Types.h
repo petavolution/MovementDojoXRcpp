@@ -54,9 +54,11 @@ struct Quat {
     Vec3 rotate(const Vec3& v) const;
     Quat conjugate() const;
     Quat normalized() const;
+    float dot(const Quat& other) const;
 
     static Quat fromAxisAngle(const Vec3& axis, float angle);
     static Quat identity() { return Quat(0, 0, 0, 1); }
+    static Quat slerp(const Quat& a, const Quat& b, float t);
 };
 
 struct Transform {

@@ -79,6 +79,11 @@ public:
     // Head pose (convenience method)
     Transform getHeadPose() const;
 
+    // Overlay mode support
+    bool isOverlaySupported() const { return m_overlaySupported; }
+    bool isOverlayModeActive() const { return m_overlaySupported && m_requestOverlayMode; }
+    void requestOverlayMode(bool enable) { m_requestOverlayMode = enable; }
+
 private:
     bool createInstance(const AppConfig& config);
     bool getSystem();
@@ -126,6 +131,8 @@ private:
 
     // Extensions
     std::vector<std::string> m_enabledExtensions;
+    bool m_overlaySupported = false;
+    bool m_requestOverlayMode = false;
 
     // Graphics binding (Vulkan or OpenGL)
     void* m_graphicsBinding = nullptr;

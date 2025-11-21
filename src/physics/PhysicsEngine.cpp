@@ -106,10 +106,12 @@ void PhysicsEngine::step(float deltaTime) {
                     body.linearVelocity.z *= (1.0f - body.config.friction * m_fixedTimeStep);
                 }
             } else if (body.config.bodyType == BodyType::Kinematic) {
-                // Interpolate towards target
+                // Interpolate towards target for smooth tracking
                 float t = 0.3f;
                 body.transform.position = body.transform.position + (body.targetTransform.position - body.transform.position) * t;
-                // TODO: Interpolate orientation using slerp
+
+                // Interpolate orientation using slerp for smooth rotation
+                body.transform.orientation = Quat::slerp(body.transform.orientation, body.targetTransform.orientation, t);
             }
         }
 

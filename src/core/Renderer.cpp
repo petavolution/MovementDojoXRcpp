@@ -163,15 +163,12 @@ void Renderer::drawSphere(const Vec3& position, float radius, const Color& color
 }
 
 void Renderer::drawLine(const Vec3& start, const Vec3& end, const Color& color) {
-    // For stub mode, we just log lines
-    // In real implementation, this would create a line primitive
-    (void)start;
-    (void)end;
-    (void)color;
+    // Draw with default width
+    drawLine(start, end, color, 0.005f);
 }
 
 void Renderer::drawLine(const Vec3& start, const Vec3& end, const Color& color, float width) {
-    // Create a thin cylinder between start and end points
+    // Create a thin box between start and end points
     Vec3 dir = end - start;
     float length = dir.length();
     if (length < 0.001f) return;
@@ -179,19 +176,29 @@ void Renderer::drawLine(const Vec3& start, const Vec3& end, const Color& color, 
     Vec3 center = (start + end) * 0.5f;
     Vec3 forward = dir.normalized();
 
-    // Calculate rotation to orient cylinder along the line
-    Vec3 up(0, 1, 0);
-    if (std::abs(Vec3::dot(forward, up)) > 0.999f) {
-        up = Vec3(1, 0, 0);
-    }
-    Vec3 right = Vec3::cross(up, forward).normalized();
-    up = Vec3::cross(forward, right);
+    // Calculate rotation to orient the line along the direction
+    // Default cube is aligned with Y axis, so rotate from Y to forward
+    Vec3 defaultUp(0, 1, 0);
+    Quat orientation;
 
-    // For simplicity, just create a stretched cube (real impl would use cylinder)
+    float dot = Vec3::dot(defaultUp, forward);
+    if (dot > 0.9999f) {
+        // Already aligned with Y
+        orientation = Quat::identity();
+    } else if (dot < -0.9999f) {
+        // Opposite direction - rotate 180 around X
+        orientation = Quat::fromAxisAngle(Vec3(1, 0, 0), 3.14159265359f);
+    } else {
+        // Compute rotation axis and angle
+        Vec3 axis = Vec3::cross(defaultUp, forward).normalized();
+        float angle = std::acos(dot);
+        orientation = Quat::fromAxisAngle(axis, angle);
+    }
+
     Transform transform;
     transform.position = center;
-    transform.scale = Vec3(width, width, length);
-    // In a real implementation, we'd compute proper orientation
+    transform.orientation = orientation;
+    transform.scale = Vec3(width, length, width);  // Y is the length direction
 
     RenderCommand cmd;
     cmd.mesh = Mesh::createCube(1.0f);

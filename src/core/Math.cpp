@@ -65,6 +65,46 @@ Quat Quat::fromAxisAngle(const Vec3& axis, float angle) {
     return Quat(n.x * s, n.y * s, n.z * s, std::cos(halfAngle));
 }
 
+float Quat::dot(const Quat& other) const {
+    return x * other.x + y * other.y + z * other.z + w * other.w;
+}
+
+Quat Quat::slerp(const Quat& a, const Quat& b, float t) {
+    // Compute dot product (cosine of angle between quaternions)
+    float cosTheta = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+
+    // Use shorter path - if dot is negative, negate one quaternion
+    Quat bAdjusted = b;
+    if (cosTheta < 0.0f) {
+        bAdjusted = Quat(-b.x, -b.y, -b.z, -b.w);
+        cosTheta = -cosTheta;
+    }
+
+    // If quaternions are very close, use linear interpolation to avoid division by zero
+    if (cosTheta > 0.9995f) {
+        Quat result(
+            a.x + t * (bAdjusted.x - a.x),
+            a.y + t * (bAdjusted.y - a.y),
+            a.z + t * (bAdjusted.z - a.z),
+            a.w + t * (bAdjusted.w - a.w)
+        );
+        return result.normalized();
+    }
+
+    // Standard slerp formula
+    float theta = std::acos(cosTheta);
+    float sinTheta = std::sin(theta);
+    float wa = std::sin((1.0f - t) * theta) / sinTheta;
+    float wb = std::sin(t * theta) / sinTheta;
+
+    return Quat(
+        wa * a.x + wb * bAdjusted.x,
+        wa * a.y + wb * bAdjusted.y,
+        wa * a.z + wb * bAdjusted.z,
+        wa * a.w + wb * bAdjusted.w
+    );
+}
+
 // Transform implementation
 std::array<float, 16> Transform::toMatrix() const {
     std::array<float, 16> m;

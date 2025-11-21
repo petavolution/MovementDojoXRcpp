@@ -115,6 +115,7 @@ bool XRSession::enumerateExtensions() {
     std::cout << "Available OpenXR extensions:" << std::endl;
     bool hasVulkan = false;
     bool hasOpenGL = false;
+    m_overlaySupported = false;
 
     for (const auto& ext : extensions) {
         std::cout << "  - " << ext.extensionName << " (v" << ext.extensionVersion << ")" << std::endl;
@@ -123,6 +124,11 @@ bool XRSession::enumerateExtensions() {
         }
         if (strcmp(ext.extensionName, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME) == 0) {
             hasOpenGL = true;
+        }
+        // Check for overlay extension (XR_EXTX_overlay)
+        if (strcmp(ext.extensionName, "XR_EXTX_overlay") == 0) {
+            m_overlaySupported = true;
+            std::cout << "  -> Overlay extension available!" << std::endl;
         }
     }
 
@@ -136,6 +142,12 @@ bool XRSession::enumerateExtensions() {
     } else {
         std::cerr << "No supported graphics API extension found!" << std::endl;
         return false;
+    }
+
+    // Enable overlay extension if available and requested
+    if (m_overlaySupported && m_requestOverlayMode) {
+        m_enabledExtensions.push_back("XR_EXTX_overlay");
+        std::cout << "Overlay mode enabled" << std::endl;
     }
 
     return true;

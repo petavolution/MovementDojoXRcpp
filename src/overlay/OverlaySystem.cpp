@@ -6,8 +6,10 @@
  */
 
 #include "OverlaySystem.h"
+#include "core/Renderer.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 namespace lst {
 
@@ -53,8 +55,10 @@ void OverlaySystem::shutdown() {
 }
 
 bool OverlaySystem::isOverlaySupported() {
-    // TODO: Query OpenXR for XR_EXTX_overlay extension
-    // For now, return true as we support standalone mode regardless
+    // OverlaySystem can always render overlay-style elements.
+    // The XR_EXTX_overlay extension (queried in XRSession) determines if we can
+    // actually run as an overlay on top of other VR apps.
+    // Without the extension, we render in our own app's layer (still useful).
     return true;
 }
 
@@ -386,56 +390,100 @@ void OverlaySystem::updateCoverageSphere() {
 }
 
 // =============================================================================
-// SimpleOverlayRenderer
+// SimpleOverlayRenderer - Actual rendering implementation
 // =============================================================================
 
 bool SimpleOverlayRenderer::initialize() {
-    // Basic initialization - would set up debug line rendering
+    if (!m_renderer) {
+        std::cout << "SimpleOverlayRenderer: Warning - no renderer set" << std::endl;
+        return false;
+    }
+    std::cout << "SimpleOverlayRenderer initialized" << std::endl;
     return true;
 }
 
 void SimpleOverlayRenderer::shutdown() {
-    // Cleanup
+    m_renderer = nullptr;
 }
 
 void SimpleOverlayRenderer::beginOverlayFrame() {
-    // Begin rendering overlay layer
+    // Overlay rendering happens within the main render pass
+    // No separate begin/end needed for this simple implementation
 }
 
 void SimpleOverlayRenderer::endOverlayFrame() {
-    // End rendering overlay layer
+    // Overlay rendering happens within the main render pass
 }
 
 void SimpleOverlayRenderer::renderTrails(const std::vector<OverlayRenderData::TrailSegment>& trails) {
-    // Would render line segments using the graphics API
+    if (!m_renderer) return;
+
     for (const auto& segment : trails) {
-        // Draw line from segment.start to segment.end with segment.color and segment.width
-        (void)segment;  // Suppress unused warning in stub
+        m_renderer->drawLine(segment.start, segment.end, segment.color, segment.width);
     }
 }
 
 void SimpleOverlayRenderer::renderGuideOrbs(const std::vector<OverlayRenderData::GuideOrb>& orbs) {
-    // Would render spheres/orbs at specified positions
+    if (!m_renderer) return;
+
     for (const auto& orb : orbs) {
-        // Draw sphere at orb.position with orb.radius and orb.color
-        (void)orb;  // Suppress unused warning in stub
+        // Apply pulse effect to radius
+        float pulseScale = 1.0f + 0.2f * std::sin(orb.pulsePhase * 6.28318f);
+        float radius = orb.radius * pulseScale;
+
+        // Draw with slight transparency variation based on pulse
+        Color pulsedColor = orb.color;
+        pulsedColor.a *= (0.7f + 0.3f * std::sin(orb.pulsePhase * 6.28318f));
+
+        m_renderer->drawSphere(orb.position, radius, pulsedColor);
     }
 }
 
 void SimpleOverlayRenderer::renderHUD(const std::vector<OverlayRenderData::HUDElement>& elements) {
-    // Would render text elements in world space
+    if (!m_renderer) return;
+
     for (const auto& element : elements) {
-        // Draw text at element.worldPosition with element.color and element.scale
-        (void)element;  // Suppress unused warning in stub
+        // Draw text at world position
+        // Note: Text rendering is currently a stub in Renderer
+        m_renderer->drawText(element.worldPosition, element.text, element.color, element.scale);
+
+        // As a fallback, draw a small indicator sphere at HUD element positions
+        // This provides visual feedback even without text rendering
+        m_renderer->drawSphere(element.worldPosition, 0.01f * element.scale, element.color);
     }
 }
 
 void SimpleOverlayRenderer::renderCoverageSphere(const std::vector<OverlayRenderData::CoveragePoint>& points) {
-    // Would render a point cloud or sphere mesh showing coverage
+    if (!m_renderer) return;
+
+    // Render coverage as small spheres in the directions that have been explored
+    // Center at player position (approximately)
+    const float coverageRadius = 0.8f;  // Distance from head center
+    const float pointSize = 0.02f;
+
     for (const auto& point : points) {
-        // Draw point in direction point.direction with point.color
-        (void)point;  // Suppress unused warning in stub
+        // Only render points with significant intensity
+        if (point.intensity > 0.1f) {
+            Vec3 position = point.direction * coverageRadius;
+            float size = pointSize * point.intensity;
+            m_renderer->drawSphere(position, size, point.color);
+        }
     }
+}
+
+void SimpleOverlayRenderer::renderAll(const OverlayRenderData& data) {
+    if (!m_renderer) return;
+
+    beginOverlayFrame();
+
+    // Render in back-to-front order for proper transparency
+    renderCoverageSphere(data.coverageSphere);
+    renderGuideOrbs(data.guideOrbs);
+    renderTrails(data.leftTrail);
+    renderTrails(data.rightTrail);
+    renderHUD(data.hudElements);
+
+    endOverlayFrame();
 }
 
 } // namespace lst

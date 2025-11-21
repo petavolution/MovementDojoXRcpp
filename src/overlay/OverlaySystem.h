@@ -212,11 +212,21 @@ public:
     virtual void renderCoverageSphere(const std::vector<OverlayRenderData::CoveragePoint>& points) = 0;
 };
 
+// Forward declaration
+class Renderer;
+
 /**
  * SimpleOverlayRenderer - Basic implementation using debug line rendering
+ *
+ * Connects to the main Renderer to actually draw overlay elements.
  */
 class SimpleOverlayRenderer : public OverlayRenderer {
 public:
+    SimpleOverlayRenderer() = default;
+    explicit SimpleOverlayRenderer(Renderer* renderer) : m_renderer(renderer) {}
+
+    void setRenderer(Renderer* renderer) { m_renderer = renderer; }
+
     bool initialize() override;
     void shutdown() override;
 
@@ -227,6 +237,12 @@ public:
     void renderGuideOrbs(const std::vector<OverlayRenderData::GuideOrb>& orbs) override;
     void renderHUD(const std::vector<OverlayRenderData::HUDElement>& elements) override;
     void renderCoverageSphere(const std::vector<OverlayRenderData::CoveragePoint>& points) override;
+
+    // Render all overlay data in one call
+    void renderAll(const OverlayRenderData& data);
+
+private:
+    Renderer* m_renderer = nullptr;
 };
 
 } // namespace lst

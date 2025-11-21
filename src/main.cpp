@@ -157,9 +157,24 @@ int runXRMode(const CommandLineConfig& cmdConfig) {
 
     // Initialize XR Session
     XRSession xrSession;
+
+    // Request overlay mode if specified (must be before initialize)
+    if (cmdConfig.overlayMode) {
+        xrSession.requestOverlayMode(true);
+    }
+
     if (!xrSession.initialize(appConfig)) {
         std::cerr << "Failed to initialize XR session" << std::endl;
         return 1;
+    }
+
+    // Report overlay status
+    if (cmdConfig.overlayMode) {
+        if (xrSession.isOverlayModeActive()) {
+            std::cout << "Running in overlay mode (XR_EXTX_overlay active)" << std::endl;
+        } else {
+            std::cout << "Overlay extension not available - running in standalone mode" << std::endl;
+        }
     }
 
     // Initialize Renderer
