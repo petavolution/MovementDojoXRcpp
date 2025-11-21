@@ -116,6 +116,7 @@ set(CORE_SOURCES
     src/core/Renderer.cpp
     src/core/Input.cpp
     src/core/Math.cpp
+    src/core/SessionManager.cpp
 )
 
 set(USD_SOURCES

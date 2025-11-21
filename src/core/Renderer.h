@@ -39,8 +39,11 @@ public:
     // Debug visualization
     void drawCube(const Transform& transform, const Color& color);
     void drawSphere(const Transform& transform, float radius, const Color& color);
+    void drawSphere(const Vec3& position, float radius, const Color& color);
     void drawLine(const Vec3& start, const Vec3& end, const Color& color);
+    void drawLine(const Vec3& start, const Vec3& end, const Color& color, float width);
     void drawGrid(float size, int divisions);
+    void drawText(const Vec3& position, const std::string& text, const Color& color, float scale = 1.0f);
 
     // Camera
     void setCameraTransform(const Transform& transform);

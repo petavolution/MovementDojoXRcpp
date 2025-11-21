@@ -148,12 +148,66 @@ void Renderer::drawSphere(const Transform& transform, float radius, const Color&
     submitDrawCommand(cmd);
 }
 
+void Renderer::drawSphere(const Vec3& position, float radius, const Color& color) {
+    Transform transform;
+    transform.position = position;
+    transform.orientation = Quat::identity();
+    transform.scale = Vec3(radius, radius, radius);
+
+    RenderCommand cmd;
+    cmd.mesh = Mesh::createSphere(1.0f, 8);  // Lower poly for many orbs
+    cmd.transform = transform;
+    cmd.material.baseColor = color;
+    cmd.material.emissive = 0.5f;  // Slight glow for guide orbs
+    submitDrawCommand(cmd);
+}
+
 void Renderer::drawLine(const Vec3& start, const Vec3& end, const Color& color) {
     // For stub mode, we just log lines
     // In real implementation, this would create a line primitive
     (void)start;
     (void)end;
     (void)color;
+}
+
+void Renderer::drawLine(const Vec3& start, const Vec3& end, const Color& color, float width) {
+    // Create a thin cylinder between start and end points
+    Vec3 dir = end - start;
+    float length = dir.length();
+    if (length < 0.001f) return;
+
+    Vec3 center = (start + end) * 0.5f;
+    Vec3 forward = dir.normalized();
+
+    // Calculate rotation to orient cylinder along the line
+    Vec3 up(0, 1, 0);
+    if (std::abs(Vec3::dot(forward, up)) > 0.999f) {
+        up = Vec3(1, 0, 0);
+    }
+    Vec3 right = Vec3::cross(up, forward).normalized();
+    up = Vec3::cross(forward, right);
+
+    // For simplicity, just create a stretched cube (real impl would use cylinder)
+    Transform transform;
+    transform.position = center;
+    transform.scale = Vec3(width, width, length);
+    // In a real implementation, we'd compute proper orientation
+
+    RenderCommand cmd;
+    cmd.mesh = Mesh::createCube(1.0f);
+    cmd.transform = transform;
+    cmd.material.baseColor = color;
+    cmd.material.emissive = 0.3f;  // Slight glow for trails
+    submitDrawCommand(cmd);
+}
+
+void Renderer::drawText(const Vec3& position, const std::string& text, const Color& color, float scale) {
+    // Stub implementation - real version would use a text rendering library
+    // For now, just track that text was requested (useful for logging)
+    (void)position;
+    (void)text;
+    (void)color;
+    (void)scale;
 }
 
 void Renderer::drawGrid(float size, int divisions) {
