@@ -124,6 +124,19 @@ set(USD_SOURCES
 
 set(TRAINING_SOURCES
     src/training/TrainingModule.cpp
+    src/training/FlowModes.cpp
+)
+
+set(ANALYTICS_SOURCES
+    src/analytics/MovementAnalytics.cpp
+)
+
+set(PROGRESSION_SOURCES
+    src/progression/ProgressionSystem.cpp
+)
+
+set(OVERLAY_SOURCES
+    src/overlay/OverlaySystem.cpp
 )
 
 set(HAPTIC_SOURCES
@@ -140,6 +153,9 @@ add_executable(lightsaber_trainer
     ${CORE_SOURCES}
     ${USD_SOURCES}
     ${TRAINING_SOURCES}
+    ${ANALYTICS_SOURCES}
+    ${PROGRESSION_SOURCES}
+    ${OVERLAY_SOURCES}
     ${HAPTIC_SOURCES}
     ${PHYSICS_SOURCES}
 )

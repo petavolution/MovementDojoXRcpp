@@ -1,13 +1,29 @@
-# USD-Based OpenXR Lightsaber Proprioception Trainer
+# Movement Dojo: XR Proprioception & Movement Exploration
 
-A high-fidelity, single-player OpenXR/SteamVR application where users engage in meditative lightsaber-based proprioception enhancement training within immersive environments defined by `.usda` scene files. The experience aims for the quality and interaction depth seen in simulations like the 'Vader Dojo' training room from 'Vader Immortal'.
+A VR application for **movement exploration and body awareness training** - a serious game that tracks, visualizes, and encourages full-body movement. Inspired by yoga, qi gong, meditation practices, and the 'Vader Dojo' from Vader Immortal.
+
+## Vision
+
+**Record EVERYTHING. Visualize EVERYTHING. Explore movements you NEVER make in daily life.**
+
+Most people use only a fraction of their body's movement potential. This application:
+- **Records all movement data** (hands, head, full tracking)
+- **Visualizes movement patterns** (trails, heatmaps, coverage maps)
+- **Tracks "movement space coverage"** - what % of your reachable space have you explored?
+- **Guides you to uncommon positions** - movements you rarely or never make
+- **Gamifies exploration** with achievements, levels, and challenges
+
+Can run standalone or as an **OpenXR overlay** on top of other VR apps!
 
 ## Core Features
 
-- **OpenXR First**: Cross-platform VR support via OpenXR standard
+- **Movement Analytics**: Complete recording and analysis of all movement data
+- **Movement Space Coverage**: Voxelized tracking of explored vs unexplored areas
+- **OpenXR Overlay Mode**: Track movements while playing any VR game
+- **Flow/Meditation Modes**: Yoga, qi gong, breathing-synchronized exercises
+- **Serious Game Progression**: XP, levels, achievements, daily/weekly challenges
 - **USD Scene Definition**: Data-driven environments using Pixar's Universal Scene Description
 - **PCVR Streaming**: Optimized for Quest 3/Pico 4 via ALVR or Virtual Desktop
-- **Proprioception Training**: Meditative lightsaber exercises with haptic feedback
 - **CLI-First Development**: Pure code workflow with no GUI dependencies
 
 ## Architecture Overview
@@ -16,9 +32,13 @@ A high-fidelity, single-player OpenXR/SteamVR application where users engage in 
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Application Layer                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │   Training   │  │    UI/UX     │  │   User Profile/      │  │
-│  │   Modules    │  │   Manager    │  │   Progress           │  │
+│  │   Training   │  │  Progression │  │   Overlay System     │  │
+│  │   Modes      │  │   System     │  │   (XR_EXTX_overlay)  │  │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│  ┌──────────────┐  ┌──────────────┐                            │
+│  │   Flow/      │  │  Movement    │                            │
+│  │   Meditation │  │  Analytics   │                            │
+│  └──────────────┘  └──────────────┘                            │
 └─────────────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────────────────────────────────────────┐
@@ -55,14 +75,24 @@ project4/
 │   │   ├── XRSession.cpp/h  # OpenXR session management
 │   │   ├── Renderer.cpp/h   # Vulkan/OpenGL rendering
 │   │   ├── Input.cpp/h      # Input and action management
-│   │   └── Physics.cpp/h    # Bullet physics integration
+│   │   └── Math.cpp         # Math utilities
 │   ├── usd/                 # USD integration
 │   │   └── USDLoader.cpp/h  # USD scene loading
+│   ├── analytics/           # Movement analytics (NEW)
+│   │   └── MovementAnalytics.cpp/h  # Full movement recording & analysis
 │   ├── training/            # Training modules
-│   │   └── TrainingModule.cpp/h
-│   └── haptics/             # Haptic feedback
-│       └── HapticManager.cpp/h
+│   │   ├── TrainingModule.cpp/h
+│   │   └── FlowModes.cpp/h  # Meditation, qi gong, yoga modes
+│   ├── progression/         # Serious game progression (NEW)
+│   │   └── ProgressionSystem.cpp/h  # XP, levels, achievements
+│   ├── overlay/             # OpenXR overlay mode (NEW)
+│   │   └── OverlaySystem.cpp/h  # Overlay on other VR apps
+│   ├── haptics/             # Haptic feedback
+│   │   └── HapticManager.cpp/h
+│   └── physics/             # Physics
+│       └── PhysicsEngine.cpp/h
 ├── include/                 # Public headers
+│   └── Types.h              # Core types (Vec3, Quat, Transform, etc.)
 ├── scripts/                 # Python and shell scripts
 │   ├── generate_scene.py    # USD scene generation
 │   ├── validate_usd.py      # USD validation
@@ -73,9 +103,9 @@ project4/
 │   ├── dojo_basic.usda      # Stage 2: Basic dojo
 │   └── dojo_full.usda       # Stage 3+: Full dojo
 ├── assets/                  # 3D models, textures, sounds
-│   └── placeholder/         # Placeholder assets
 ├── tests/                   # Unit and integration tests
 │   ├── CMakeLists.txt
+│   ├── test_math.cpp
 │   └── test_usd_loader.cpp
 ├── docker/                  # Docker configuration
 │   └── Dockerfile
@@ -222,9 +252,34 @@ def Xform "World"
 }
 ```
 
-## Training Modules
+## Training Modes
 
-Training exercises are defined via custom USD schemas:
+### Flow & Meditation Modes
+
+The application includes multiple mindful movement modes:
+
+| Mode | Description |
+|------|-------------|
+| **Free Exploration** | Freely explore movement space with visual coverage feedback |
+| **Guided Stretch** | Follow guided yoga/stretch sequences with target positions |
+| **Breathing Sync** | Synchronize movement with breathing rhythm (inhale/exhale) |
+| **Mirror Mode** | Follow a ghost guide through recorded or procedural sequences |
+| **Movement Meditation** | Slow, mindful movement with awareness cues |
+| **Flow State** | Encourage continuous movement flow with dynamic targets |
+
+### Movement Space Zones
+
+The application tracks exploration of different movement zones:
+
+- **Overhead**: Above your head (uncommon in daily life)
+- **Behind High/Low**: Behind your back (rarely used)
+- **Floor Front/Side**: Near floor positions
+- **Side High/Mid**: Reaching to the sides
+- **Front High/Mid/Low**: Standard frontal positions
+
+### Training Exercises (USD-defined)
+
+Training exercises can also be defined via custom USD schemas:
 
 ```usda
 def "Exercise_HoldSteady" (
@@ -238,6 +293,86 @@ def "Exercise_HoldSteady" (
     float exercise:toleranceDegrees = 5.0
 }
 ```
+
+## Movement Analytics
+
+The MovementAnalytics system records ALL movement data:
+
+```cpp
+struct MovementSample {
+    double timestamp;
+    Vec3 headPosition, headVelocity;
+    Vec3 leftHandPosition, rightHandPosition;
+    Vec3 leftHandRelative, rightHandRelative;  // Head-relative
+    Quat leftHandOrientation, rightHandOrientation;
+    Vec3 leftHandVelocity, rightHandVelocity;
+    float leftGripStrength, rightGripStrength;
+};
+```
+
+### Key Metrics
+
+- **Movement Space Coverage**: 0-100% of reachable space explored
+- **Uncommon Position Time**: Time spent in rarely-used positions
+- **Movement Symmetry**: Left/right balance analysis
+- **Flow Score**: Continuous movement quality (0-1)
+- **Velocity Patterns**: Speed and acceleration analysis
+
+## Progression System
+
+### Level System
+
+| Level | Title | XP Required | Unlocks |
+|-------|-------|-------------|---------|
+| 1 | Newcomer | 0 | - |
+| 2 | Explorer | 100 | Free Exploration mode |
+| 3 | Seeker | 350 | Guided Stretch, trail colors |
+| 4 | Practitioner | 850 | Breathing Sync, heatmap view |
+| 5 | Adept | 1600 | Mirror Mode, ghost playback |
+| 6 | Journeyman | 2600 | Meditation Mode, custom sequences |
+| 7 | Expert | 4100 | Flow State, movement analysis |
+| 8 | Master | 6100 | Advanced stats |
+| 9 | Grand Master | 9100 | Mentor mode |
+| 10 | Movement Sage | 14100 | All features |
+
+### Achievements
+
+- **Exploration**: Coverage milestones (10%, 25%, 50%, 75%)
+- **Discovery**: Uncommon position discoveries
+- **Flow**: Flow state duration records
+- **Consistency**: Daily/weekly streak achievements
+- **Mastery**: Body symmetry and movement variety
+
+### Daily/Weekly Challenges
+
+The system generates dynamic challenges:
+- "Increase coverage by 5%"
+- "Discover 3 uncommon positions"
+- "Maintain flow state for 30 seconds"
+
+## Overlay Mode
+
+Run as an OpenXR overlay on top of ANY VR game:
+
+```bash
+./lightsaber_trainer --overlay --minimal
+```
+
+### Overlay Elements
+
+- **Movement Trails**: Colorized hand movement visualization
+- **Coverage Indicator**: Current exploration percentage
+- **Uncommon Area Guides**: Orbs highlighting unexplored areas
+- **Stats HUD**: Session timer, coverage, discoveries
+- **Breathing Guide**: Visual breathing rhythm indicator
+
+### Overlay Presets
+
+- `minimal`: Just trails, low opacity
+- `standard`: Trails + stats HUD
+- `exploration`: Full coverage visualization
+- `meditation`: Trails + breathing guide
+- `full`: All elements enabled
 
 ## Testing
 
