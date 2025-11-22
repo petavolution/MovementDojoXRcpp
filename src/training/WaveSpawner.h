@@ -191,6 +191,12 @@ public:
      */
     void addScore(float points);
 
+    /**
+     * Fire a blaster ray and check for drone hits.
+     * Returns true if a drone was hit.
+     */
+    bool fireBlasterRay(const Vec3& origin, const Vec3& direction, float maxDistance);
+
     // -------------------------------------------------------------------------
     // Player State (for AI targeting)
     // -------------------------------------------------------------------------

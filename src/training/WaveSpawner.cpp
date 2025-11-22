@@ -499,4 +499,80 @@ void WaveSpawner::checkWaveCompletion() {
     }
 }
 
+// =============================================================================
+// Blaster Ray Attack
+// =============================================================================
+
+bool WaveSpawner::fireBlasterRay(const Vec3& origin, const Vec3& direction, float maxDistance) {
+    if (!m_waveActive || m_drones.empty()) {
+        return false;
+    }
+
+    // Normalize direction
+    Vec3 dir = direction;
+    float len = dir.length();
+    if (len < 0.001f) return false;
+    dir = dir * (1.0f / len);
+
+    // Find closest drone hit by ray
+    Drone* closestHit = nullptr;
+    float closestDist = maxDistance;
+    const float HIT_RADIUS = 0.3f;  // Drone hitbox radius
+
+    for (auto& drone : m_drones) {
+        if (!drone || !drone->isAlive()) {
+            continue;
+        }
+
+        Vec3 dronePos = drone->getPosition();
+
+        // Ray-sphere intersection
+        Vec3 toCenter = dronePos - origin;
+        float tca = Vec3::dot(toCenter, dir);
+
+        // Drone is behind us
+        if (tca < 0) continue;
+
+        // Distance from ray to sphere center
+        float d2 = Vec3::dot(toCenter, toCenter) - tca * tca;
+        float r2 = HIT_RADIUS * HIT_RADIUS;
+
+        // Ray misses sphere
+        if (d2 > r2) continue;
+
+        // Calculate intersection distance
+        float thc = std::sqrt(r2 - d2);
+        float t = tca - thc;
+
+        // Check if this is closer
+        if (t > 0 && t < closestDist) {
+            closestDist = t;
+            closestHit = drone.get();
+        }
+    }
+
+    // Apply damage to hit drone
+    if (closestHit) {
+        LOG_INFO(LOG_TAG_SPAWNER) << "Blaster hit drone " << closestHit->getId()
+                                   << " at distance " << closestDist << "m";
+
+        closestHit->takeDamage(1);
+
+        // Check if destroyed
+        if (!closestHit->isAlive()) {
+            m_metrics.enemiesKilled++;
+            m_metrics.enemiesRemaining = std::max(0, m_metrics.enemiesRemaining - 1);
+            m_metrics.score += 150.0f;  // Bonus for blaster kill
+
+            if (m_onEnemyKilled) {
+                m_onEnemyKilled(closestHit->getId());
+            }
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
 } // namespace lst

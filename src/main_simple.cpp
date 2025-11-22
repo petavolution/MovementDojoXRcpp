@@ -838,13 +838,85 @@ int RunTrainingSequence(const std::string& sequenceId, const std::string& logPat
         return 1;
     }
 
-    // Run the engine (controller updates automatically via System interface)
+    // =========================================================================
+    // Custom Game Loop - Wire Input to Gameplay
+    // =========================================================================
+    // We use a custom loop instead of engine.run() to:
+    // 1. Read controller input and update spawner with player/saber positions
+    // 2. Handle saber attacks (right trigger + swing velocity)
+    // 3. Handle blaster fire (left trigger)
+
     LOG_INFO(LOG_TAG_SEQMODE) << "";
     LOG_INFO(LOG_TAG_SEQMODE) << "Sequence running... Press Ctrl+C to exit";
     LOG_INFO(LOG_TAG_SEQMODE) << "";
 
     engine.startSession();
-    engine.run();
+
+    // Input state tracking
+    float lastRightTrigger = 0.0f;
+    float lastLeftTrigger = 0.0f;
+    Vec3 lastSaberPos(0, 0, 0);
+    const float TRIGGER_THRESHOLD = 0.5f;
+    const float SWING_VELOCITY_THRESHOLD = 1.5f;  // m/s for saber attack
+    const float SABER_RADIUS = 0.15f;
+
+    // Custom game loop
+    while (engine.tick()) {
+        // Get current controller state
+        const auto& rightCtrl = engine.getRightController();
+        const auto& leftCtrl = engine.getLeftController();
+        const auto& headPose = engine.getHeadPose();
+
+        // Update spawner with current player/saber positions
+        spawner->setPlayerPosition(headPose.position);
+        spawner->setPlayerSaberPosition(rightCtrl.pose.position);
+        spawner->setPlayerSaberRadius(SABER_RADIUS);
+
+        // Calculate saber velocity for swing detection
+        Vec3 saberVelocity = rightCtrl.velocity;
+        float swingSpeed = saberVelocity.length();
+
+        // Saber attack: Right trigger pressed + swinging motion
+        bool rightTriggerPressed = (rightCtrl.triggerValue > TRIGGER_THRESHOLD &&
+                                    lastRightTrigger <= TRIGGER_THRESHOLD);
+        if (rightTriggerPressed || swingSpeed > SWING_VELOCITY_THRESHOLD) {
+            // Saber is swinging - collision detection happens in spawner via
+            // projectile.update() with updated saber position
+            if (swingSpeed > SWING_VELOCITY_THRESHOLD) {
+                // Haptic feedback for fast swing
+                engine.triggerHaptic(Hand::Right, 0.3f, 0.05f);
+            }
+        }
+
+        // Blaster fire: Left trigger pressed
+        bool leftTriggerPressed = (leftCtrl.triggerValue > TRIGGER_THRESHOLD &&
+                                   lastLeftTrigger <= TRIGGER_THRESHOLD);
+        if (leftTriggerPressed && leftCtrl.isTracked) {
+            // Fire blaster toward where left hand is pointing
+            // Calculate direction from controller orientation
+            Vec3 blasterDir = leftCtrl.pose.orientation.rotate(Vec3(0, 0, -1));
+
+            // Raycast through active drones to find hits
+            bool hitDrone = spawner->fireBlasterRay(leftCtrl.pose.position, blasterDir, 50.0f);
+            if (hitDrone) {
+                engine.triggerHaptic(Hand::Left, 0.5f, 0.1f);
+            } else {
+                engine.triggerHaptic(Hand::Left, 0.2f, 0.05f);
+            }
+        }
+
+        // Store last trigger values for edge detection
+        lastRightTrigger = rightCtrl.triggerValue;
+        lastLeftTrigger = leftCtrl.triggerValue;
+        lastSaberPos = rightCtrl.pose.position;
+
+        // Check if sequence completed
+        if (controller->isCompleted()) {
+            LOG_INFO(LOG_TAG_SEQMODE) << "Sequence completed!";
+            break;
+        }
+    }
+
     engine.endSession();
 
     // Get final results
