@@ -187,6 +187,17 @@ bool PhysicsEngine::addBody(const PhysicsBodyConfig& config) {
         body->setActivationState(DISABLE_DEACTIVATION);
     }
 
+    // Enable Continuous Collision Detection (CCD) for fast-moving objects
+    // Critical for VR controllers that can move very quickly and would otherwise
+    // "tunnel" through thin objects like saber blades or targets
+    if (config.enableCCD) {
+        body->setCcdMotionThreshold(config.ccdMotionThreshold);
+        body->setCcdSweptSphereRadius(config.ccdSweptSphereRadius);
+        std::cout << "  CCD enabled for " << config.name
+                  << " (threshold=" << config.ccdMotionThreshold
+                  << ", radius=" << config.ccdSweptSphereRadius << ")" << std::endl;
+    }
+
     world->addRigidBody(body, config.collisionGroup, config.collisionMask);
 #endif
 

@@ -58,6 +58,12 @@ struct PhysicsBodyConfig {
     Transform initialTransform;
     int collisionGroup = 1;
     int collisionMask = -1;  // Collide with all groups
+
+    // Continuous Collision Detection (CCD) - essential for fast-moving VR controllers
+    // Prevents objects from "tunneling" through each other at high speeds
+    bool enableCCD = false;
+    float ccdMotionThreshold = 0.01f;  // Start CCD if object moves more than this per frame
+    float ccdSweptSphereRadius = 0.05f; // Swept sphere radius for CCD test
 };
 
 // Collision callback

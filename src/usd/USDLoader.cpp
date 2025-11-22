@@ -696,4 +696,184 @@ bool USDSceneGenerator::save() {
 #endif
 }
 
+// =============================================================================
+// USDLoader VariantSet Implementation
+// =============================================================================
+
+std::vector<std::string> USDLoader::getVariantSets(const std::string& primPath) const {
+    std::vector<std::string> result;
+#if HAS_USD
+    if (!m_stage) return result;
+    auto stage = *static_cast<pxr::UsdStageRefPtr*>(m_stage);
+    pxr::UsdPrim prim = stage->GetPrimAtPath(pxr::SdfPath(primPath));
+    if (!prim.IsValid()) return result;
+
+    pxr::UsdVariantSets variantSets = prim.GetVariantSets();
+    std::vector<std::string> names = variantSets.GetNames();
+    result.insert(result.end(), names.begin(), names.end());
+#else
+    (void)primPath;
+    // Stub: return example variant sets for testing
+    if (primPath == "/" + m_defaultPrimName || primPath == "/World") {
+        result = {"dojoLayout", "difficulty", "timeOfDay"};
+    }
+#endif
+    return result;
+}
+
+std::vector<std::string> USDLoader::getVariantOptions(const std::string& primPath,
+                                                       const std::string& variantSetName) const {
+    std::vector<std::string> result;
+#if HAS_USD
+    if (!m_stage) return result;
+    auto stage = *static_cast<pxr::UsdStageRefPtr*>(m_stage);
+    pxr::UsdPrim prim = stage->GetPrimAtPath(pxr::SdfPath(primPath));
+    if (!prim.IsValid()) return result;
+
+    pxr::UsdVariantSet variantSet = prim.GetVariantSet(variantSetName);
+    if (!variantSet.IsValid()) return result;
+
+    result = variantSet.GetVariantNames();
+#else
+    (void)primPath;
+    // Stub: return example options for testing
+    if (variantSetName == "dojoLayout") {
+        result = {"Basic", "Advanced", "Master", "Zen"};
+    } else if (variantSetName == "difficulty") {
+        result = {"Easy", "Normal", "Hard", "Impossible"};
+    } else if (variantSetName == "timeOfDay") {
+        result = {"Dawn", "Day", "Dusk", "Night"};
+    }
+#endif
+    return result;
+}
+
+std::string USDLoader::getSelectedVariant(const std::string& primPath,
+                                          const std::string& variantSetName) const {
+#if HAS_USD
+    if (!m_stage) return "";
+    auto stage = *static_cast<pxr::UsdStageRefPtr*>(m_stage);
+    pxr::UsdPrim prim = stage->GetPrimAtPath(pxr::SdfPath(primPath));
+    if (!prim.IsValid()) return "";
+
+    pxr::UsdVariantSet variantSet = prim.GetVariantSet(variantSetName);
+    if (!variantSet.IsValid()) return "";
+
+    return variantSet.GetVariantSelection();
+#else
+    (void)primPath;
+    (void)variantSetName;
+    // Stub: return default selection
+    return "Basic";
+#endif
+}
+
+bool USDLoader::selectVariant(const std::string& primPath,
+                              const std::string& variantSetName,
+                              const std::string& variantName) {
+#if HAS_USD
+    if (!m_stage) return false;
+    auto stage = *static_cast<pxr::UsdStageRefPtr*>(m_stage);
+    pxr::UsdPrim prim = stage->GetPrimAtPath(pxr::SdfPath(primPath));
+    if (!prim.IsValid()) return false;
+
+    pxr::UsdVariantSet variantSet = prim.GetVariantSet(variantSetName);
+    if (!variantSet.IsValid()) return false;
+
+    bool success = variantSet.SetVariantSelection(variantName);
+    if (success) {
+        // Reload affected geometry
+        std::cout << "Variant selected: " << primPath << "/" << variantSetName
+                  << " = " << variantName << std::endl;
+        // Re-traverse to update scene objects
+        // In a full implementation, we'd only reload affected prims
+    }
+    return success;
+#else
+    std::cout << "Variant selected (stub): " << primPath << "/" << variantSetName
+              << " = " << variantName << std::endl;
+    return true;
+#endif
+}
+
+std::vector<std::string> USDLoader::getRootVariantSets() const {
+    return getVariantSets("/" + m_defaultPrimName);
+}
+
+bool USDLoader::selectRootVariant(const std::string& variantSetName, const std::string& variantName) {
+    return selectVariant("/" + m_defaultPrimName, variantSetName, variantName);
+}
+
+// =============================================================================
+// USDLoader Layer Implementation
+// =============================================================================
+
+bool USDLoader::addSubLayer(const std::string& layerPath) {
+#if HAS_USD
+    if (!m_stage) return false;
+    auto stage = *static_cast<pxr::UsdStageRefPtr*>(m_stage);
+    pxr::SdfLayerHandle rootLayer = stage->GetRootLayer();
+
+    // Add sublayer
+    rootLayer->InsertSubLayerPath(layerPath);
+    std::cout << "Added sublayer: " << layerPath << std::endl;
+    return true;
+#else
+    std::cout << "Added sublayer (stub): " << layerPath << std::endl;
+    return true;
+#endif
+}
+
+bool USDLoader::removeSubLayer(const std::string& layerPath) {
+#if HAS_USD
+    if (!m_stage) return false;
+    auto stage = *static_cast<pxr::UsdStageRefPtr*>(m_stage);
+    pxr::SdfLayerHandle rootLayer = stage->GetRootLayer();
+
+    // Find and remove sublayer
+    std::vector<std::string> subLayers = rootLayer->GetSubLayerPaths();
+    for (size_t i = 0; i < subLayers.size(); i++) {
+        if (subLayers[i] == layerPath) {
+            rootLayer->RemoveSubLayerPath(static_cast<int>(i));
+            std::cout << "Removed sublayer: " << layerPath << std::endl;
+            return true;
+        }
+    }
+    return false;
+#else
+    std::cout << "Removed sublayer (stub): " << layerPath << std::endl;
+    return true;
+#endif
+}
+
+std::vector<std::string> USDLoader::getSubLayers() const {
+    std::vector<std::string> result;
+#if HAS_USD
+    if (!m_stage) return result;
+    auto stage = *static_cast<pxr::UsdStageRefPtr*>(m_stage);
+    pxr::SdfLayerHandle rootLayer = stage->GetRootLayer();
+    result = rootLayer->GetSubLayerPaths();
+#else
+    // Stub: return example sublayers
+    result = {"training_guides.usda", "hazard_zones.usda"};
+#endif
+    return result;
+}
+
+void USDLoader::muteSubLayer(const std::string& layerPath, bool muted) {
+#if HAS_USD
+    if (!m_stage) return;
+    auto stage = *static_cast<pxr::UsdStageRefPtr*>(m_stage);
+
+    if (muted) {
+        stage->MuteLayer(layerPath);
+    } else {
+        stage->UnmuteLayer(layerPath);
+    }
+    std::cout << "Layer " << layerPath << (muted ? " muted" : " unmuted") << std::endl;
+#else
+    std::cout << "Layer " << layerPath << (muted ? " muted (stub)" : " unmuted (stub)") << std::endl;
+#endif
+}
+
 } // namespace lst

@@ -55,6 +55,48 @@ public:
     std::string getUpAxis() const { return m_upAxis; }
     double getMetersPerUnit() const { return m_metersPerUnit; }
 
+    // =========================================================================
+    // VariantSet Support - Dynamic scene configuration
+    // =========================================================================
+
+    // Get all variant sets available on a prim (e.g., "dojoLayout", "difficulty")
+    std::vector<std::string> getVariantSets(const std::string& primPath) const;
+
+    // Get all variant options for a variant set (e.g., ["Basic", "Advanced", "Master"])
+    std::vector<std::string> getVariantOptions(const std::string& primPath,
+                                                const std::string& variantSetName) const;
+
+    // Get currently selected variant
+    std::string getSelectedVariant(const std::string& primPath,
+                                   const std::string& variantSetName) const;
+
+    // Select a variant (returns true if successful, reloads affected geometry)
+    bool selectVariant(const std::string& primPath,
+                       const std::string& variantSetName,
+                       const std::string& variantName);
+
+    // Convenience: Get all variant sets on the default prim
+    std::vector<std::string> getRootVariantSets() const;
+
+    // Select variant on default prim
+    bool selectRootVariant(const std::string& variantSetName, const std::string& variantName);
+
+    // =========================================================================
+    // Layer Support - Non-destructive overlays for training guides
+    // =========================================================================
+
+    // Add a sublayer (e.g., training guides overlay)
+    bool addSubLayer(const std::string& layerPath);
+
+    // Remove a sublayer
+    bool removeSubLayer(const std::string& layerPath);
+
+    // Get list of active sublayers
+    std::vector<std::string> getSubLayers() const;
+
+    // Mute/unmute a sublayer (hide without removing)
+    void muteSubLayer(const std::string& layerPath, bool muted);
+
 private:
     // Parse a mesh prim
     bool parseMesh(const std::string& primPath, SceneObject& object);
