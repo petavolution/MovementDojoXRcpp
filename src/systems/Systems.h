@@ -45,17 +45,50 @@ public:
     // Direct access to physics engine
     PhysicsEngine& getPhysics() { return m_physics; }
 
-    // Convenience methods
-    void addStaticBody(const std::string& name, const Vec3& position, float radius) {
-        m_physics.addStaticSphere(name, position, radius);
+    // Convenience methods using proper PhysicsBodyConfig API
+    bool addStaticSphere(const std::string& name, const Vec3& position, float radius) {
+        PhysicsBodyConfig config;
+        config.name = name;
+        config.bodyType = BodyType::Static;
+        config.shapeType = ShapeType::Sphere;
+        config.shapeSize = Vec3(radius, radius, radius);
+        config.initialTransform.position = position;
+        return m_physics.addBody(config);
     }
 
-    void addDynamicBody(const std::string& name, const Vec3& position, float mass) {
-        m_physics.addDynamicSphere(name, position, 0.05f, mass);
+    bool addDynamicSphere(const std::string& name, const Vec3& position, float radius, float mass) {
+        PhysicsBodyConfig config;
+        config.name = name;
+        config.bodyType = BodyType::Dynamic;
+        config.shapeType = ShapeType::Sphere;
+        config.shapeSize = Vec3(radius, radius, radius);
+        config.mass = mass;
+        config.initialTransform.position = position;
+        config.enableCCD = true;  // Enable CCD for VR controller objects
+        return m_physics.addBody(config);
     }
 
-    bool raycast(const Vec3& origin, const Vec3& direction, float maxDist, Vec3& hitPoint) {
-        return m_physics.raycast(origin, direction, maxDist, hitPoint);
+    bool addKinematicController(const std::string& name, const Vec3& position, float radius) {
+        PhysicsBodyConfig config;
+        config.name = name;
+        config.bodyType = BodyType::Kinematic;
+        config.shapeType = ShapeType::Sphere;
+        config.shapeSize = Vec3(radius, radius, radius);
+        config.initialTransform.position = position;
+        config.enableCCD = true;
+        return m_physics.addBody(config);
+    }
+
+    bool raycast(const Vec3& origin, const Vec3& direction, float maxDist,
+                 std::string& hitBodyName, Vec3& hitPoint, Vec3& hitNormal) {
+        PhysicsEngine::RayHit hit;
+        if (m_physics.raycast(origin, direction, maxDist, hit)) {
+            hitBodyName = hit.bodyName;
+            hitPoint = hit.hitPoint;
+            hitNormal = hit.hitNormal;
+            return true;
+        }
+        return false;
     }
 
 private:
@@ -72,21 +105,25 @@ public:
 
     bool onAttach(Engine* engine) override {
         m_engine = engine;
-        m_analytics.initialize();
+        // Initialize with default config
+        MovementAnalyticsConfig config;
+        m_analytics.initialize(config);
         return true;
     }
 
     void onDetach() override {
-        m_analytics.shutdown();
+        // End session if active
+        if (m_analytics.isRecording()) {
+            m_analytics.endSession();
+        }
     }
 
     void onUpdate(const FrameContext& ctx) override {
-        m_analytics.recordPose(
-            ctx.leftController.position,
-            ctx.rightController.position,
-            ctx.headPose.position,
-            ctx.totalTime
-        );
+        if (!m_analytics.isRecording()) return;
+
+        // Record sample using proper API
+        m_analytics.recordSample(ctx.deltaTime, ctx.headPose,
+                                  ctx.leftController, ctx.rightController);
     }
 
     void onSessionStart() override {
@@ -97,13 +134,41 @@ public:
         m_analytics.endSession();
     }
 
-    // Analytics queries
-    float getCoverage() const { return m_analytics.getCoverage(); }
-    int getUncommonAreasFound() const { return m_analytics.getUncommonAreasFound(); }
+    // Analytics queries - using proper API names
+    float getCoverage() const { return m_analytics.getMovementSpaceCoverage(); }
 
-    void exportData(const std::string& path) {
-        m_analytics.exportToFile(path);
+    bool isInUncommonPosition() const { return m_analytics.isInUncommonPosition(); }
+
+    const SessionSummary& getSessionSummary() const {
+        return m_analytics.getSessionSummary();
     }
+
+    MovementPattern getCurrentPattern() const {
+        return m_analytics.getCurrentPattern();
+    }
+
+    float getCurrentIntensity() const {
+        return m_analytics.getCurrentIntensity();
+    }
+
+    Vec3 getSuggestedExplorationDirection() const {
+        return m_analytics.getSuggestedExplorationDirection();
+    }
+
+    std::vector<Vec3> getUnexploredAreas() const {
+        return m_analytics.getUnexploredAreas();
+    }
+
+    bool exportData(const std::string& path) {
+        return m_analytics.exportSession(path);
+    }
+
+    bool exportCSV(const std::string& path) {
+        return m_analytics.exportToCSV(path);
+    }
+
+    // Direct access for advanced usage
+    MovementAnalytics& getAnalytics() { return m_analytics; }
 
 private:
     MovementAnalytics m_analytics;
@@ -119,38 +184,49 @@ public:
 
     bool onAttach(Engine* engine) override {
         m_engine = engine;
-        // HapticManager is initialized without Input dependency in new architecture
-        m_initialized = true;
+        // Note: HapticManager requires Input* which we don't have in new architecture
+        // We use Engine::triggerHaptic() directly instead
         return true;
     }
 
     void onUpdate(const FrameContext& ctx) override {
-        if (!m_initialized) return;
-
-        // Process queued haptic events
-        m_haptics.update(ctx.deltaTime);
+        (void)ctx;  // No update needed when using Engine directly
     }
 
-    // Haptic patterns
-    void pulse(Hand hand, float intensity, float duration) {
+    // Simple haptic triggers via Engine
+    void pulse(Hand hand, float intensity = 0.5f, float duration = 0.1f) {
         if (m_engine) {
             m_engine->triggerHaptic(hand, intensity, duration);
         }
     }
 
-    void playPattern(const std::string& pattern, Hand hand) {
-        m_haptics.playPattern(pattern, hand);
+    void buzz(Hand hand, float intensity = 0.3f) {
+        pulse(hand, intensity, 0.05f);
     }
 
-    void playCollisionFeedback(float impactStrength) {
+    // Predefined patterns using Engine haptics
+    void playSuccessPattern(Hand hand) {
+        pulse(hand, 0.6f, 0.1f);  // Quick pulse
+    }
+
+    void playFailurePattern(Hand hand) {
+        pulse(hand, 0.3f, 0.2f);  // Longer buzz
+    }
+
+    void playCollisionFeedback(Hand hand, float impactStrength) {
+        float intensity = std::min(1.0f, impactStrength);
+        pulse(hand, intensity, 0.1f);
+    }
+
+    void playCollisionFeedbackBoth(float impactStrength) {
         float intensity = std::min(1.0f, impactStrength);
         pulse(Hand::Left, intensity, 0.1f);
         pulse(Hand::Right, intensity, 0.1f);
     }
 
-private:
-    HapticManager m_haptics;
-    bool m_initialized = false;
+    void playGuidanceNudge(Hand hand, float strength = 0.3f) {
+        pulse(hand, strength, 0.15f);
+    }
 };
 
 // =============================================================================
@@ -163,11 +239,18 @@ public:
 
     bool onAttach(Engine* engine) override {
         m_engine = engine;
+        // Create default profile if none loaded
+        if (m_playerName.empty()) {
+            m_playerName = "Player";
+        }
+        m_progression.createNewProfile(m_playerName);
         return true;
     }
 
     void onSessionStart() override {
-        m_progression.startSession(m_playerName);
+        m_progression.startSession();
+        m_sessionTime = 0;
+        m_lastXPTime = 0;
     }
 
     void onSessionEnd() override {
@@ -175,41 +258,74 @@ public:
     }
 
     void onUpdate(const FrameContext& ctx) override {
-        // Could trigger XP for exploration time
         m_sessionTime += ctx.deltaTime;
 
-        // Award XP periodically for active sessions
+        // Award XP periodically for active sessions (every 60 seconds)
         if (m_sessionTime - m_lastXPTime >= 60.0) {
-            m_progression.awardXP(10, "Active exploration");
+            m_progression.addXP(10);  // Active exploration bonus
             m_lastXPTime = m_sessionTime;
         }
     }
 
-    // Progression API
-    void setPlayerName(const std::string& name) { m_playerName = name; }
-
-    void awardXP(int amount, const std::string& reason) {
-        m_progression.awardXP(amount, reason);
+    // Profile management
+    void setPlayerName(const std::string& name) {
+        m_playerName = name;
+        m_progression.createNewProfile(name);
     }
 
-    int getLevel() const { return m_progression.getLevel(); }
-    int getTotalXP() const { return m_progression.getTotalXP(); }
-
-    void setLevelUpCallback(std::function<void(int, const std::string&)> callback) {
-        m_progression.setLevelUpCallback(callback);
-    }
-
-    void setAchievementCallback(std::function<void(const std::string&, const std::string&)> callback) {
-        m_progression.setAchievementCallback(callback);
+    bool loadProfile(const std::string& path) {
+        return m_progression.loadProfile(path);
     }
 
     bool saveProfile(const std::string& path) {
         return m_progression.saveProfile(path);
     }
 
-    bool loadProfile(const std::string& path) {
-        return m_progression.loadProfile(path);
+    // XP and Level
+    void addXP(int amount) {
+        m_progression.addXP(amount);
     }
+
+    int getLevel() const { return m_progression.getCurrentLevel(); }
+    int getCurrentXP() const { return m_progression.getCurrentXP(); }
+    float getLevelProgress() const { return m_progression.getLevelProgress(); }
+
+    const LevelInfo& getCurrentLevelInfo() const {
+        return m_progression.getCurrentLevelInfo();
+    }
+
+    // Stats access
+    const PlayerStats& getStats() const { return m_progression.getStats(); }
+
+    // Achievements
+    const std::vector<Achievement>& getAchievements() const {
+        return m_progression.getAchievements();
+    }
+
+    std::vector<Achievement> getUnlockedAchievements() const {
+        return m_progression.getUnlockedAchievements();
+    }
+
+    // Challenges
+    const std::vector<Challenge>& getActiveChallenges() const {
+        return m_progression.getActiveChallenges();
+    }
+
+    // Callbacks - using correct signatures from ProgressionSystem.h
+    void setLevelUpCallback(ProgressionSystem::LevelUpCallback callback) {
+        m_progression.setLevelUpCallback(callback);
+    }
+
+    void setAchievementCallback(ProgressionSystem::AchievementCallback callback) {
+        m_progression.setAchievementCallback(callback);
+    }
+
+    void setChallengeCompleteCallback(ProgressionSystem::ChallengeCompleteCallback callback) {
+        m_progression.setChallengeCompleteCallback(callback);
+    }
+
+    // Direct access for advanced usage
+    ProgressionSystem& getProgression() { return m_progression; }
 
 private:
     ProgressionSystem m_progression;

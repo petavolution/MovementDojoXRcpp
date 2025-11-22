@@ -6,6 +6,7 @@
  */
 
 #include "Engine.h"
+#include "Logger.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -19,9 +20,12 @@ namespace lst {
 // =============================================================================
 
 Engine::Engine() {
-    // Initialize controller states
-    m_leftController = {};
-    m_rightController = {};
+    // Initialize controller states with correct hand assignment
+    m_leftController = ControllerState();
+    m_leftController.hand = Hand::Left;
+
+    m_rightController = ControllerState();
+    m_rightController.hand = Hand::Right;
 }
 
 Engine::~Engine() {
@@ -34,21 +38,30 @@ Engine::~Engine() {
 
 bool Engine::initialize(const EngineConfig& config) {
     if (m_initialized) {
+        LOG_WARN("Engine") << "Engine already initialized";
         log("Engine already initialized");
         return true;
     }
 
+    // Initialize logger if not already done
+    if (!Logger::isInitialized()) {
+        Logger::init("debug-log.txt");
+    }
+
     m_config = config;
+    LOG_INFO("Engine") << "Initializing engine: " << config.appName;
     log("Initializing engine: " + config.appName);
 
     // Initialize OpenXR
     if (!initializeXR()) {
+        LOG_ERROR("Engine") << "Failed to initialize OpenXR - check HMD connection";
         log("Failed to initialize OpenXR");
         return false;
     }
 
     m_initialized = true;
     m_running = true;
+    LOG_INFO("Engine") << "Engine initialized successfully";
     log("Engine initialized successfully");
     return true;
 }
@@ -365,9 +378,17 @@ bool Engine::initializeXR() {
 }
 
 bool Engine::createXRInstance() {
+    LOG_INFO("XR") << "Enumerating OpenXR extensions...";
+
     // Check available extensions
     uint32_t extensionCount = 0;
-    xrEnumerateInstanceExtensionProperties(nullptr, 0, &extensionCount, nullptr);
+    XrResult result = xrEnumerateInstanceExtensionProperties(nullptr, 0, &extensionCount, nullptr);
+    if (XR_FAILED(result)) {
+        LOG_ERROR("XR") << "Failed to enumerate extensions: " << xrResultToString(result);
+        return false;
+    }
+
+    LOG_DEBUG("XR") << "Found " << extensionCount << " available extensions";
 
     std::vector<XrExtensionProperties> extensions(extensionCount, {XR_TYPE_EXTENSION_PROPERTIES});
     xrEnumerateInstanceExtensionProperties(nullptr, extensionCount, &extensionCount, extensions.data());
@@ -379,8 +400,11 @@ bool Engine::createXRInstance() {
     bool hasVulkan = false;
     bool hasOpenGL = false;
     bool hasOverlay = false;
+    bool hasHandTracking = false;
 
     for (const auto& ext : extensions) {
+        LOG_DEBUG("XR") << "  Extension: " << ext.extensionName << " v" << ext.extensionVersion;
+
         if (strcmp(ext.extensionName, "XR_KHR_vulkan_enable") == 0) {
             hasVulkan = true;
         }
@@ -390,17 +414,30 @@ bool Engine::createXRInstance() {
         if (strcmp(ext.extensionName, "XR_EXTX_overlay") == 0) {
             hasOverlay = true;
         }
+        if (strcmp(ext.extensionName, "XR_EXT_hand_tracking") == 0) {
+            hasHandTracking = true;
+        }
     }
+
+    LOG_INFO("XR") << "Graphics APIs: Vulkan=" << (hasVulkan ? "yes" : "no")
+                   << ", OpenGL=" << (hasOpenGL ? "yes" : "no");
+    LOG_INFO("XR") << "Features: Overlay=" << (hasOverlay ? "yes" : "no")
+                   << ", HandTracking=" << (hasHandTracking ? "yes" : "no");
 
     if (hasVulkan) {
         enabledExtensions.push_back("XR_KHR_vulkan_enable");
+        LOG_INFO("XR") << "Using Vulkan graphics API";
     } else if (hasOpenGL) {
         enabledExtensions.push_back("XR_KHR_opengl_enable");
+        LOG_INFO("XR") << "Using OpenGL graphics API";
+    } else {
+        LOG_WARN("XR") << "No graphics API extension found - session may fail";
     }
 
     if (hasOverlay && m_config.requestOverlay) {
         enabledExtensions.push_back("XR_EXTX_overlay");
         m_overlayActive = true;
+        LOG_INFO("XR") << "Overlay mode enabled";
     }
 
     // Create instance
@@ -413,18 +450,26 @@ bool Engine::createXRInstance() {
     createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
     createInfo.enabledExtensionNames = enabledExtensions.data();
 
-    XrResult result = xrCreateInstance(&createInfo, &m_xrInstance);
+    LOG_INFO("XR") << "Creating XR instance with " << enabledExtensions.size() << " extensions...";
+
+    result = xrCreateInstance(&createInfo, &m_xrInstance);
     if (XR_FAILED(result)) {
+        LOG_ERROR("XR") << "Failed to create XR instance: " << xrResultToString(result);
         log("Failed to create XR instance");
         return false;
     }
+
+    LOG_INFO("XR") << "XR instance created successfully";
 
     // Get system
     XrSystemGetInfo systemInfo = {XR_TYPE_SYSTEM_GET_INFO};
     systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
 
+    LOG_INFO("XR") << "Getting HMD system...";
     result = xrGetSystem(m_xrInstance, &systemInfo, &m_xrSystemId);
     if (XR_FAILED(result)) {
+        LOG_ERROR("XR") << "Failed to get XR system: " << xrResultToString(result);
+        LOG_ERROR("XR") << "Is an HMD connected and the runtime active?";
         log("Failed to get XR system - is HMD connected?");
         return false;
     }
@@ -432,6 +477,13 @@ bool Engine::createXRInstance() {
     // Get system properties
     XrSystemProperties systemProps = {XR_TYPE_SYSTEM_PROPERTIES};
     xrGetSystemProperties(m_xrInstance, m_xrSystemId, &systemProps);
+
+    LOG_INFO("XR") << "XR System: " << systemProps.systemName;
+    LOG_INFO("XR") << "  Vendor ID: " << systemProps.vendorId;
+    LOG_INFO("XR") << "  Max layers: " << systemProps.graphicsProperties.maxLayerCount;
+    LOG_INFO("XR") << "  Max swapchain size: " << systemProps.graphicsProperties.maxSwapchainImageWidth
+                   << "x" << systemProps.graphicsProperties.maxSwapchainImageHeight;
+
     log("XR System: " + std::string(systemProps.systemName));
 
     return true;

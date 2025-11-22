@@ -20,6 +20,7 @@ set(TEST_SOURCES
     # Core engine tests
     test_math.cpp
     test_physics.cpp
+    test_engine.cpp
 
     # Session and state tests
     test_session_manager.cpp
@@ -117,6 +118,7 @@ add_test(NAME HapticsTests COMMAND lightsaber_tests --haptics)
 add_test(NAME ProgressionTests COMMAND lightsaber_tests --progression)
 add_test(NAME AnalyticsTests COMMAND lightsaber_tests --analytics)
 add_test(NAME IntegrationTests COMMAND lightsaber_tests --integration)
+add_test(NAME EngineTests COMMAND lightsaber_tests --engine)
 
 # Test groups
 add_test(NAME CoreTests COMMAND lightsaber_tests --core)
@@ -133,6 +135,7 @@ set_tests_properties(
     ProgressionTests
     AnalyticsTests
     IntegrationTests
+    EngineTests
     CoreTests
     AllTests
     PROPERTIES
@@ -141,7 +144,7 @@ set_tests_properties(
 )
 
 # Label tests for filtering
-set_tests_properties(MathTests PhysicsTests SessionManagerTests PROPERTIES LABELS "core")
+set_tests_properties(MathTests PhysicsTests SessionManagerTests EngineTests PROPERTIES LABELS "core")
 set_tests_properties(ProgressionTests AnalyticsTests PROPERTIES LABELS "gameplay")
 set_tests_properties(IntegrationTests PROPERTIES LABELS "integration")
 set_tests_properties(HapticsTests PROPERTIES LABELS "hardware")

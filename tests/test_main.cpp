@@ -19,6 +19,7 @@ int runHapticsTests();
 int runProgressionTests();
 int runAnalyticsTests();
 int runIntegrationTests();
+int runEngineTests();
 
 void printUsage(const char* program) {
     std::cout << "Usage: " << program << " [options]" << std::endl;
@@ -33,6 +34,7 @@ void printUsage(const char* program) {
     std::cout << "  --progression Run progression system tests" << std::endl;
     std::cout << "  --analytics   Run movement analytics tests" << std::endl;
     std::cout << "  --integration Run integration tests" << std::endl;
+    std::cout << "  --engine      Run unified Engine architecture tests" << std::endl;
     std::cout << std::endl;
     std::cout << "Options:" << std::endl;
     std::cout << "  --all         Run all tests (default)" << std::endl;
@@ -64,6 +66,7 @@ int main(int argc, char* argv[]) {
     bool runProgression = false;
     bool runAnalytics = false;
     bool runIntegration = false;
+    bool runEngine = false;
 
     // Parse command line arguments
     for (int i = 1; i < argc; i++) {
@@ -97,6 +100,9 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "--integration") == 0) {
             runIntegration = true;
             runAll = false;
+        } else if (strcmp(argv[i], "--engine") == 0) {
+            runEngine = true;
+            runAll = false;
         } else if (strcmp(argv[i], "--core") == 0) {
             runCore = true;
             runAll = false;
@@ -110,6 +116,7 @@ int main(int argc, char* argv[]) {
         runMath = true;
         runPhysics = true;
         runSession = true;
+        runEngine = true;
     }
 
     int result = 0;
@@ -164,6 +171,11 @@ int main(int argc, char* argv[]) {
 
     if (runAll || runIntegration) {
         result |= runIntegrationTests();
+        std::cout << std::endl;
+    }
+
+    if (runAll || runEngine) {
+        result |= runEngineTests();
         std::cout << std::endl;
     }
 
