@@ -89,64 +89,94 @@ bool Engine::initialize(const EngineConfig& config) {
 void Engine::shutdown() {
     if (!m_initialized) return;
 
+    LOG_INFO(LOG_TAG_ENGINE) << "Shutdown initiated";
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Shutting down engine";
     log("Shutting down engine");
 
     // End active session
     if (m_sessionActive) {
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Ending active session...";
         endSession();
     }
 
     // Detach all systems
-    for (auto& sys : m_systems) {
-        sys->onDetach();
+    if (!m_systems.empty()) {
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Detaching " << m_systems.size() << " systems...";
+        for (auto& sys : m_systems) {
+            LOG_TRACE(LOG_TAG_ENGINE) << "  Detaching system: " << sys->getName();
+            sys->onDetach();
+        }
+        m_systems.clear();
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Systems detached";
     }
-    m_systems.clear();
 
-    // Cleanup XR resources
+    // Cleanup XR resources (in reverse order of creation)
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Cleaning up OpenXR resources...";
+
+    // Input resources
     for (int i = 0; i < 2; i++) {
         if (m_handSpaces[i] != XR_NULL_HANDLE) {
+            LOG_TRACE(LOG_TAG_XR) << "  Destroying hand space " << i;
             xrDestroySpace(m_handSpaces[i]);
             m_handSpaces[i] = XR_NULL_HANDLE;
         }
     }
 
     if (m_actionSet != XR_NULL_HANDLE) {
+        LOG_TRACE(LOG_TAG_XR) << "  Destroying action set";
         xrDestroyActionSet(m_actionSet);
         m_actionSet = XR_NULL_HANDLE;
     }
 
-    for (auto& sw : m_swapchains) {
-        if (sw.handle != XR_NULL_HANDLE) {
-            xrDestroySwapchain(sw.handle);
+    // Swapchains
+    if (!m_swapchains.empty()) {
+        LOG_TRACE(LOG_TAG_XR) << "  Destroying " << m_swapchains.size() << " swapchains";
+        for (auto& sw : m_swapchains) {
+            if (sw.handle != XR_NULL_HANDLE) {
+                xrDestroySwapchain(sw.handle);
+            }
         }
+        m_swapchains.clear();
     }
-    m_swapchains.clear();
 
+    // Reference spaces
     if (m_viewSpace != XR_NULL_HANDLE) {
+        LOG_TRACE(LOG_TAG_XR) << "  Destroying view space";
         xrDestroySpace(m_viewSpace);
         m_viewSpace = XR_NULL_HANDLE;
     }
     if (m_localSpace != XR_NULL_HANDLE) {
+        LOG_TRACE(LOG_TAG_XR) << "  Destroying local space";
         xrDestroySpace(m_localSpace);
         m_localSpace = XR_NULL_HANDLE;
     }
     if (m_stageSpace != XR_NULL_HANDLE) {
+        LOG_TRACE(LOG_TAG_XR) << "  Destroying stage space";
         xrDestroySpace(m_stageSpace);
         m_stageSpace = XR_NULL_HANDLE;
     }
 
+    // Session
     if (m_xrSession != XR_NULL_HANDLE) {
+        LOG_DEBUG(LOG_TAG_XR) << "  Destroying XR session";
         xrDestroySession(m_xrSession);
         m_xrSession = XR_NULL_HANDLE;
     }
 
+    // Instance (must be last)
     if (m_xrInstance != XR_NULL_HANDLE) {
+        LOG_DEBUG(LOG_TAG_XR) << "  Destroying XR instance";
         xrDestroyInstance(m_xrInstance);
         m_xrInstance = XR_NULL_HANDLE;
     }
 
+    LOG_DEBUG(LOG_TAG_ENGINE) << "OpenXR resources cleaned up";
+
     m_initialized = false;
     m_running = false;
+    m_xrReady = false;
+
+    LOG_INFO(LOG_TAG_ENGINE) << "Engine shutdown complete";
     log("Engine shutdown complete");
 }
 
@@ -269,11 +299,13 @@ void Engine::startSession() {
 void Engine::endSession() {
     if (!m_sessionActive) return;
 
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Session ending - notifying " << m_systems.size() << " systems";
     for (auto& sys : m_systems) {
         sys->onSessionEnd();
     }
 
     m_sessionActive = false;
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Session ended";
     log("Session ended");
 }
 

@@ -6,6 +6,53 @@
  *
  * Usage:
  *   ./movement_dojo_simple [--overlay] [--scene path.usda]
+ *
+ * =============================================================================
+ * DOJO TEST RITUAL - Manual VR Test Procedure
+ * =============================================================================
+ *
+ * Before testing new features on Quest 3 + Virtual Desktop + SteamVR:
+ *
+ * Step 1: Prepare the VR Environment
+ *   - Start SteamVR on PC
+ *   - Put on Quest 3 and launch Virtual Desktop
+ *   - Connect to PC and wait for SteamVR to detect headset
+ *   - Verify: SteamVR status shows "Ready" (green icon)
+ *
+ * Step 2: Run VR Diagnostics
+ *   $ ./bin/movement_dojo_simple --vr-diagnostics -v
+ *
+ *   Expected output:
+ *     "VR Diagnostics: PASS - Ready for dojo prototype."
+ *
+ *   If FAIL:
+ *     - Check log at ./logs/engine.log for detailed errors
+ *     - Verify SteamVR is running and HMD is detected
+ *     - Restart SteamVR and Virtual Desktop if needed
+ *
+ * Step 3: Run VR Smoke Test (Visual Check)
+ *   $ ./bin/movement_dojo_simple --vr-smoke-test -v
+ *
+ *   Look around in VR - you should see:
+ *     - Gray floor (5m x 5m)
+ *     - 4 dark red corner pillars
+ *     - Cyan saber in right hand (follows controller)
+ *     - Gray blaster in left hand (follows controller)
+ *     - Red hovering drone sphere ahead (~1.5m up, 1.5m forward)
+ *
+ *   In the log, verify:
+ *     - "HMD=OK" in periodic status messages
+ *     - "L=tracked R=tracked" for controllers
+ *     - No repeated warnings about lost tracking
+ *
+ *   Press Ctrl+C to exit when done.
+ *
+ * Step 4: (Optional) Headless CI/CD Test
+ *   $ ./bin/movement_dojo_simple --headless --mock --frames 100 -v
+ *
+ *   Expected: Runs 100 frames with mock tracking, exits cleanly.
+ *
+ * =============================================================================
  */
 
 #include "core/Engine.h"
@@ -323,8 +370,12 @@ int RunVrSmokeTest(const std::string& logPath) {
     LOG_INFO(LOG_TAG_DIAG) << "Initializing VR...";
     if (!engine.initialize(config)) {
         LOG_ERROR(LOG_TAG_DIAG) << "Failed to initialize VR";
+        LOG_ERROR(LOG_TAG_DIAG) << "Check: (1) SteamVR running, (2) HMD connected, (3) Virtual Desktop streaming";
+        LOG_INFO(LOG_TAG_DIAG) << "VR Smoke Test: FAIL";
         std::cout << "\nVR Smoke Test: FAIL - Could not initialize VR\n";
         std::cout << "See log at: " << logPath << "\n";
+        engine.shutdown();  // Clean up any partial initialization
+        Logger::flush();
         Logger::shutdown();
         return 1;
     }
@@ -345,9 +396,10 @@ int RunVrSmokeTest(const std::string& logPath) {
     engine.endSession();
     engine.shutdown();
 
-    LOG_INFO(LOG_TAG_DIAG) << "VR Smoke Test completed";
+    LOG_INFO(LOG_TAG_DIAG) << "VR Smoke Test completed (logs flushed)";
     std::cout << "\nVR Smoke Test: Completed\n";
 
+    Logger::flush();
     Logger::shutdown();
     return 0;
 }
@@ -396,6 +448,7 @@ int RunVrDiagnostics(const std::string& logPath) {
     if (!engine.initialize(config)) {
         failReason = "OpenXR initialization failed";
         LOG_ERROR(LOG_TAG_DIAG) << "FAIL: " << failReason;
+        LOG_ERROR(LOG_TAG_DIAG) << "Check: (1) SteamVR running, (2) HMD connected, (3) Virtual Desktop streaming";
 
         // Print final result
         std::cout << "\n";
@@ -405,6 +458,8 @@ int RunVrDiagnostics(const std::string& logPath) {
         std::cout << "See log at: " << logPath << "\n";
         std::cout << "========================================\n";
 
+        engine.shutdown();  // Clean up any partial initialization
+        Logger::flush();
         Logger::shutdown();
         return 1;
     }
@@ -415,6 +470,7 @@ int RunVrDiagnostics(const std::string& logPath) {
     if (!runtimeOk) {
         failReason = "OpenXR runtime not ready";
         LOG_ERROR(LOG_TAG_DIAG) << "FAIL: " << failReason;
+        LOG_ERROR(LOG_TAG_DIAG) << "HMD may be disconnected or sleeping";
         engine.shutdown();
 
         std::cout << "\n";
@@ -424,6 +480,7 @@ int RunVrDiagnostics(const std::string& logPath) {
         std::cout << "See log at: " << logPath << "\n";
         std::cout << "========================================\n";
 
+        Logger::flush();
         Logger::shutdown();
         return 1;
     }
@@ -534,6 +591,8 @@ int RunVrDiagnostics(const std::string& logPath) {
     }
     std::cout << "========================================\n";
 
+    LOG_INFO(LOG_TAG_DIAG) << "Diagnostics complete (logs flushed)";
+    Logger::flush();
     Logger::shutdown();
     return overallPass ? 0 : 1;
 }
@@ -656,6 +715,9 @@ int main(int argc, char* argv[]) {
     LOG_DEBUG(LOG_TAG_ENGINE) << "Initializing engine...";
     if (!engine.initialize(config)) {
         LOG_ERROR(LOG_TAG_ENGINE) << "Failed to initialize engine";
+        LOG_ERROR(LOG_TAG_ENGINE) << "Use --headless for CLI testing without VR hardware";
+        engine.shutdown();  // Clean up any partial initialization
+        Logger::flush();
         Logger::shutdown();
         return 1;
     }
@@ -709,7 +771,8 @@ int main(int argc, char* argv[]) {
     LOG_DEBUG(LOG_TAG_ENGINE) << "Shutting down engine...";
     engine.shutdown();
 
-    LOG_INFO(LOG_TAG_ENGINE) << "Shutdown complete";
+    LOG_INFO(LOG_TAG_ENGINE) << "Shutdown complete (logs flushed)";
+    Logger::flush();
     Logger::shutdown();
     return 0;
 }
