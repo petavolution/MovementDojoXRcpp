@@ -119,6 +119,11 @@ set(CORE_SOURCES
     src/core/SessionManager.cpp
 )
 
+# Unified Engine (simplified architecture)
+set(ENGINE_SOURCES
+    src/core/Engine.cpp
+)
+
 set(USD_SOURCES
     src/usd/USDLoader.cpp
 )
@@ -195,6 +200,38 @@ elseif(Bullet_FOUND)
     )
 endif()
 
+# =============================================================================
+# Simplified executable using unified Engine architecture
+# =============================================================================
+
+add_executable(movement_dojo_simple
+    src/main_simple.cpp
+    ${ENGINE_SOURCES}
+    ${PHYSICS_SOURCES}
+    ${ANALYTICS_SOURCES}
+    ${HAPTIC_SOURCES}
+    ${PROGRESSION_SOURCES}
+    src/core/Math.cpp
+)
+
+target_link_libraries(movement_dojo_simple
+    ${OPENXR_LIBRARIES}
+    ${Vulkan_LIBRARIES}
+    Threads::Threads
+)
+
+if(glfw3_FOUND)
+    target_link_libraries(movement_dojo_simple glfw)
+else()
+    target_link_libraries(movement_dojo_simple ${GLFW3_LIBRARIES})
+endif()
+
+if(BULLET_FOUND)
+    target_link_libraries(movement_dojo_simple ${BULLET_LIBRARIES})
+elseif(Bullet_FOUND)
+    target_link_libraries(movement_dojo_simple Bullet::Bullet)
+endif()
+
 # Tests
 if(BUILD_TESTS)
     enable_testing()
@@ -202,7 +239,7 @@ if(BUILD_TESTS)
 endif()
 
 # Installation
-install(TARGETS lightsaber_trainer
+install(TARGETS lightsaber_trainer movement_dojo_simple
     RUNTIME DESTINATION bin
 )
 
