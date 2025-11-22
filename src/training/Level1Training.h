@@ -16,8 +16,11 @@
 
 #include "../core/Engine.h"
 #include "../core/Logger.h"
+#include "../entities/Drone.h"
+#include "../entities/Projectile.h"
 #include <string>
 #include <chrono>
+#include <memory>
 
 namespace lst {
 
@@ -141,6 +144,20 @@ private:
     void setupWeapons();
     void clearDrillEntities();
 
+    // Entity management
+    void spawnDrone(const DroneConfig& config);
+    void spawnProjectile(const ProjectileConfig& config);
+    void updateDrones(float deltaTime, const Vec3& playerPosition);
+    void updateProjectiles(float deltaTime, const Vec3& saberPosition, float saberRadius);
+    void cleanupDeadEntities();
+    void fireProjectileFromDrone(Drone& drone, const Vec3& targetPosition);
+    void checkBlasterHits(const Vec3& blasterPosition, const Vec3& blasterDirection);
+
+    // Phase-specific spawning
+    void spawnSaberDrillEntities();
+    void spawnBlasterDrillEntities();
+    void spawnMixedDrillEntities();
+
     // Rendering helpers
     void renderStateHUD(const FrameContext& ctx);
     void renderIntroText(const FrameContext& ctx);
@@ -176,6 +193,26 @@ private:
 
     // Scene object names (for cleanup)
     std::vector<std::string> m_drillEntityNames;
+
+    // Entity management
+    std::vector<std::unique_ptr<Drone>> m_drones;
+    std::vector<std::unique_ptr<Projectile>> m_projectiles;
+    int m_nextDroneId = 0;
+    int m_nextProjectileId = 0;
+
+    // Entity limits (for safety)
+    static constexpr int MAX_DRONES = 3;
+    static constexpr int MAX_PROJECTILES = 20;
+
+    // Saber collision parameters
+    static constexpr float SABER_RADIUS = 0.1f;  // Collision radius for blocking
+    static constexpr float BLASTER_RANGE = 20.0f;
+    static constexpr float BLASTER_RADIUS = 0.15f;
+
+    // Dive attack tracking
+    bool m_diveAttackTriggered = false;
+    float m_diveAttackTimer = 0.0f;
+    static constexpr float DIVE_ATTACK_TIME = 30.0f;  // Trigger dive at 30s into mixed drill
 
     // Flags
     bool m_environmentSetup = false;

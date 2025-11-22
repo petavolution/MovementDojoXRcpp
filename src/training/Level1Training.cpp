@@ -216,7 +216,7 @@ void Level1TrainingSystem::onEnterState(Level1State state) {
             LOG_INFO(LOG_TAG_LEVEL1) << "Objectives:";
             LOG_INFO(LOG_TAG_LEVEL1) << "  - Strike the target spheres";
             LOG_INFO(LOG_TAG_LEVEL1) << "  - Block incoming slow projectiles";
-            // TODO: Spawn saber targets here
+            spawnSaberDrillEntities();
             break;
 
         case Level1State::BLASTER_DRILL:
@@ -225,7 +225,7 @@ void Level1TrainingSystem::onEnterState(Level1State state) {
             LOG_INFO(LOG_TAG_LEVEL1) << "Objectives:";
             LOG_INFO(LOG_TAG_LEVEL1) << "  - Shoot stationary and slow-moving drones";
             LOG_INFO(LOG_TAG_LEVEL1) << "  - Pull trigger to fire";
-            // TODO: Spawn blaster drones here
+            spawnBlasterDrillEntities();
             break;
 
         case Level1State::MIXED_DRILL:
@@ -235,7 +235,8 @@ void Level1TrainingSystem::onEnterState(Level1State state) {
             LOG_INFO(LOG_TAG_LEVEL1) << "  - Drones will shoot slow projectiles (block with saber)";
             LOG_INFO(LOG_TAG_LEVEL1) << "  - Shoot drones with blaster";
             LOG_INFO(LOG_TAG_LEVEL1) << "  - Watch for telegraphed dive attack!";
-            // TODO: Spawn mixed scenario entities here
+            m_diveAttackTriggered = false;
+            spawnMixedDrillEntities();
             break;
 
         case Level1State::SUMMARY:
@@ -302,17 +303,29 @@ void Level1TrainingSystem::updateIntro(float deltaTime) {
 }
 
 void Level1TrainingSystem::updateSaberDrill(float deltaTime) {
-    (void)deltaTime;
+    // Get player and saber position
+    Vec3 playerPos = m_engine ? m_engine->getHeadPose().position : Vec3(0, 1.5f, 0);
+    Vec3 saberPos = playerPos;  // Will be updated from right controller if available
 
-    // TODO: Spawn and manage saber targets
-    // TODO: Detect saber collisions
-    // TODO: Spawn slow projectiles to block
+    if (m_engine) {
+        const auto& rightCtrl = m_engine->getRightController();
+        if (rightCtrl.isTracked) {
+            saberPos = rightCtrl.pose.position;
+        }
+    }
+
+    // Update entities
+    updateDrones(deltaTime, playerPos);
+    updateProjectiles(deltaTime, saberPos, SABER_RADIUS);
+    cleanupDeadEntities();
 
     // Log progress periodically
     float progress = m_stateTimer / SABER_DRILL_DURATION * 100.0f;
     if (static_cast<int>(m_stateTimer) % 15 == 0 &&
         m_stateTimer - static_cast<int>(m_stateTimer) < 0.02f) {
-        LOG_DEBUG(LOG_TAG_LEVEL1) << "Saber drill progress: " << static_cast<int>(progress) << "%";
+        LOG_DEBUG(LOG_TAG_LEVEL1) << "Saber drill progress: " << static_cast<int>(progress) << "%"
+                                   << " | Blocked: " << m_stats.projectilesBlocked
+                                   << " | Missed: " << m_stats.projectilesMissed;
     }
 
     // Transition when timer expires
@@ -322,17 +335,36 @@ void Level1TrainingSystem::updateSaberDrill(float deltaTime) {
 }
 
 void Level1TrainingSystem::updateBlasterDrill(float deltaTime) {
-    (void)deltaTime;
+    // Get player position and blaster aim
+    Vec3 playerPos = m_engine ? m_engine->getHeadPose().position : Vec3(0, 1.5f, 0);
+    Vec3 blasterPos = playerPos;
+    Vec3 blasterDir = Vec3(0, 0, -1);
 
-    // TODO: Spawn and manage target drones
-    // TODO: Detect blaster shots
-    // TODO: Move some drones slowly
+    if (m_engine) {
+        const auto& leftCtrl = m_engine->getLeftController();
+        if (leftCtrl.isTracked) {
+            blasterPos = leftCtrl.pose.position;
+            blasterDir = leftCtrl.pose.orientation.rotate(Vec3(0, 0, -1));
+
+            // Check for trigger press to fire
+            if (leftCtrl.triggerPressed) {
+                checkBlasterHits(blasterPos, blasterDir);
+                m_stats.shotsFired++;
+            }
+        }
+    }
+
+    // Update drones (no projectiles in blaster drill - drones are just targets)
+    updateDrones(deltaTime, playerPos);
+    cleanupDeadEntities();
 
     // Log progress periodically
     float progress = m_stateTimer / BLASTER_DRILL_DURATION * 100.0f;
     if (static_cast<int>(m_stateTimer) % 15 == 0 &&
         m_stateTimer - static_cast<int>(m_stateTimer) < 0.02f) {
-        LOG_DEBUG(LOG_TAG_LEVEL1) << "Blaster drill progress: " << static_cast<int>(progress) << "%";
+        LOG_DEBUG(LOG_TAG_LEVEL1) << "Blaster drill progress: " << static_cast<int>(progress) << "%"
+                                   << " | Hits: " << m_stats.shotsHit
+                                   << " / " << m_stats.shotsFired;
     }
 
     // Transition when timer expires
@@ -342,22 +374,73 @@ void Level1TrainingSystem::updateBlasterDrill(float deltaTime) {
 }
 
 void Level1TrainingSystem::updateMixedDrill(float deltaTime) {
-    (void)deltaTime;
+    // Get player positions
+    Vec3 playerPos = m_engine ? m_engine->getHeadPose().position : Vec3(0, 1.5f, 0);
+    Vec3 saberPos = playerPos;
+    Vec3 blasterPos = playerPos;
+    Vec3 blasterDir = Vec3(0, 0, -1);
 
-    // TODO: Spawn shooter drones
-    // TODO: Spawn dive attack drone at ~30s mark
-    // TODO: Manage combat flow
+    if (m_engine) {
+        const auto& rightCtrl = m_engine->getRightController();
+        if (rightCtrl.isTracked) {
+            saberPos = rightCtrl.pose.position;
+        }
+
+        const auto& leftCtrl = m_engine->getLeftController();
+        if (leftCtrl.isTracked) {
+            blasterPos = leftCtrl.pose.position;
+            blasterDir = leftCtrl.pose.orientation.rotate(Vec3(0, 0, -1));
+
+            // Check for trigger press to fire
+            if (leftCtrl.triggerPressed) {
+                checkBlasterHits(blasterPos, blasterDir);
+                m_stats.shotsFired++;
+            }
+        }
+    }
+
+    // Update all entities
+    updateDrones(deltaTime, playerPos);
+    updateProjectiles(deltaTime, saberPos, SABER_RADIUS);
+    cleanupDeadEntities();
+
+    // Trigger dive attack at ~30s mark
+    if (!m_diveAttackTriggered && m_stateTimer >= DIVE_ATTACK_TIME) {
+        m_diveAttackTriggered = true;
+        LOG_INFO(LOG_TAG_LEVEL1) << ">>> DIVE ATTACK INCOMING! <<<";
+
+        // Find or spawn the dive drone and trigger attack
+        for (auto& drone : m_drones) {
+            if (drone && drone->isAlive() && drone->getBehavior() == DroneBehavior::SLOW_DIVE) {
+                drone->startDiveAttack(playerPos);
+                break;
+            }
+        }
+    }
+
+    // Check for dive attack collision with player
+    for (auto& drone : m_drones) {
+        if (drone && drone->isDiving()) {
+            Vec3 dronePos = drone->getPosition();
+            Vec3 diff = dronePos - playerPos;
+            float dist = diff.length();
+            if (dist < 0.5f) {  // Hit player
+                LOG_INFO(LOG_TAG_LEVEL1) << "Player HIT by dive attack!";
+                m_stats.divesHit++;
+            } else if (drone->isDiveComplete()) {
+                LOG_INFO(LOG_TAG_LEVEL1) << "Player DODGED the dive attack!";
+                m_stats.divesDodged++;
+            }
+        }
+    }
 
     // Log progress periodically
     float progress = m_stateTimer / MIXED_DRILL_DURATION * 100.0f;
     if (static_cast<int>(m_stateTimer) % 15 == 0 &&
         m_stateTimer - static_cast<int>(m_stateTimer) < 0.02f) {
-        LOG_DEBUG(LOG_TAG_LEVEL1) << "Mixed drill progress: " << static_cast<int>(progress) << "%";
-    }
-
-    // Warn about dive attack
-    if (m_stateTimer >= 28.0f && m_stateTimer < 28.1f) {
-        LOG_INFO(LOG_TAG_LEVEL1) << "WARNING: Dive attack incoming!";
+        LOG_DEBUG(LOG_TAG_LEVEL1) << "Mixed drill progress: " << static_cast<int>(progress) << "%"
+                                   << " | Blocked: " << m_stats.projectilesBlocked
+                                   << " | Hits: " << m_stats.shotsHit;
     }
 
     // Transition when timer expires
@@ -454,12 +537,21 @@ void Level1TrainingSystem::setupWeapons() {
 }
 
 void Level1TrainingSystem::clearDrillEntities() {
-    if (!m_engine) return;
+    LOG_DEBUG(LOG_TAG_LEVEL1) << "Clearing drill entities: "
+                               << m_drones.size() << " drones, "
+                               << m_projectiles.size() << " projectiles";
 
-    for (const auto& name : m_drillEntityNames) {
-        m_engine->removeSceneObject(name);
+    // Remove scene objects
+    if (m_engine) {
+        for (const auto& name : m_drillEntityNames) {
+            m_engine->removeSceneObject(name);
+        }
     }
     m_drillEntityNames.clear();
+
+    // Clear entity containers
+    m_drones.clear();
+    m_projectiles.clear();
 
     LOG_TRACE(LOG_TAG_LEVEL1) << "Cleared drill entities";
 }
@@ -588,6 +680,261 @@ void Level1TrainingSystem::logLevelSummary() {
     LOG_INFO(LOG_TAG_LEVEL1) << "  Dives dodged:     " << m_stats.divesDodged << "/"
                              << (m_stats.divesDodged + m_stats.divesHit);
     LOG_INFO(LOG_TAG_LEVEL1) << "----------------------------------------";
+}
+
+// =============================================================================
+// Entity Management
+// =============================================================================
+
+void Level1TrainingSystem::spawnDrone(const DroneConfig& config) {
+    if (static_cast<int>(m_drones.size()) >= MAX_DRONES) {
+        LOG_WARN(LOG_TAG_LEVEL1) << "Max drones (" << MAX_DRONES << ") reached, cannot spawn more";
+        return;
+    }
+
+    int id = m_nextDroneId++;
+    auto drone = std::make_unique<Drone>(id, config);
+
+    // Add scene object
+    if (m_engine) {
+        SceneObject obj = drone->createSceneObject();
+        m_engine->addSceneObject(obj);
+        m_drillEntityNames.push_back(obj.name);
+    }
+
+    LOG_INFO(LOG_TAG_LEVEL1) << "Spawned drone " << id
+                             << " behavior=" << droneBehaviorToString(config.behavior)
+                             << " at (" << config.spawnPosition.x << ", "
+                             << config.spawnPosition.y << ", " << config.spawnPosition.z << ")";
+
+    m_drones.push_back(std::move(drone));
+}
+
+void Level1TrainingSystem::spawnProjectile(const ProjectileConfig& config) {
+    if (static_cast<int>(m_projectiles.size()) >= MAX_PROJECTILES) {
+        LOG_WARN(LOG_TAG_LEVEL1) << "Max projectiles (" << MAX_PROJECTILES << ") reached, cannot spawn more";
+        return;
+    }
+
+    int id = m_nextProjectileId++;
+    auto projectile = std::make_unique<Projectile>(id, config);
+
+    // Add scene object
+    if (m_engine) {
+        SceneObject obj = projectile->createSceneObject();
+        m_engine->addSceneObject(obj);
+        m_drillEntityNames.push_back(obj.name);
+    }
+
+    LOG_DEBUG(LOG_TAG_LEVEL1) << "Spawned projectile " << id;
+    m_projectiles.push_back(std::move(projectile));
+}
+
+void Level1TrainingSystem::updateDrones(float deltaTime, const Vec3& playerPosition) {
+    for (auto& drone : m_drones) {
+        if (!drone || !drone->isAlive()) continue;
+
+        drone->update(deltaTime, playerPosition);
+
+        // Update scene object position
+        if (m_engine) {
+            if (auto* obj = m_engine->getSceneObject(drone->getSceneObjectName())) {
+                obj->transform.position = drone->getPosition();
+                obj->transform.orientation = drone->getOrientation();
+
+                // Visual feedback for dive telegraph
+                if (drone->getState() == DroneState::TELEGRAPH) {
+                    obj->material.emissive = 0.8f;  // Bright warning
+                    obj->material.baseColor = Color(1.0f, 0.0f, 0.0f);  // Flash red
+                } else if (drone->getState() == DroneState::DIVING) {
+                    obj->material.emissive = 1.0f;
+                }
+            }
+        }
+
+        // Fire projectiles if able (for shooting drones)
+        if (drone->canFire() && drone->getBehavior() != DroneBehavior::SLOW_DIVE) {
+            fireProjectileFromDrone(*drone, playerPosition);
+        }
+    }
+}
+
+void Level1TrainingSystem::updateProjectiles(float deltaTime, const Vec3& saberPosition, float saberRadius) {
+    for (auto& projectile : m_projectiles) {
+        if (!projectile || !projectile->isActive()) continue;
+
+        bool stillActive = projectile->update(deltaTime, saberPosition, saberRadius);
+
+        // Update scene object position
+        if (m_engine && stillActive) {
+            if (auto* obj = m_engine->getSceneObject(projectile->getSceneObjectName())) {
+                obj->transform.position = projectile->getPosition();
+            }
+        }
+
+        // Track stats for blocked/missed
+        if (!stillActive) {
+            if (projectile->wasBlocked()) {
+                m_stats.projectilesBlocked++;
+                LOG_DEBUG(LOG_TAG_LEVEL1) << "Projectile blocked! Total: " << m_stats.projectilesBlocked;
+            } else if (projectile->wasMissed()) {
+                m_stats.projectilesMissed++;
+                LOG_DEBUG(LOG_TAG_LEVEL1) << "Projectile missed! Total: " << m_stats.projectilesMissed;
+            }
+        }
+    }
+}
+
+void Level1TrainingSystem::cleanupDeadEntities() {
+    // Remove dead drones
+    for (auto it = m_drones.begin(); it != m_drones.end(); ) {
+        if (!(*it) || !(*it)->isAlive()) {
+            if (*it && m_engine) {
+                m_engine->removeSceneObject((*it)->getSceneObjectName());
+            }
+            it = m_drones.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    // Remove inactive projectiles
+    for (auto it = m_projectiles.begin(); it != m_projectiles.end(); ) {
+        if (!(*it) || !(*it)->isActive()) {
+            if (*it && m_engine) {
+                m_engine->removeSceneObject((*it)->getSceneObjectName());
+            }
+            it = m_projectiles.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void Level1TrainingSystem::fireProjectileFromDrone(Drone& drone, const Vec3& targetPosition) {
+    Vec3 dronePos = drone.getPosition();
+    Vec3 direction = targetPosition - dronePos;
+
+    ProjectileConfig config;
+    config.spawnPosition = dronePos;
+    config.direction = direction;
+    config.speed = 2.0f;  // Very slow - easy to block
+    config.lifetime = 5.0f;
+    config.color = Color(1.0f, 0.3f, 0.3f);  // Red glow
+
+    spawnProjectile(config);
+    drone.resetFireTimer();
+
+    LOG_DEBUG(LOG_TAG_LEVEL1) << "Drone " << drone.getId() << " fired projectile";
+}
+
+void Level1TrainingSystem::checkBlasterHits(const Vec3& blasterPosition, const Vec3& blasterDirection) {
+    // Simple raycast check against drones
+    for (auto& drone : m_drones) {
+        if (!drone || !drone->isAlive()) continue;
+
+        Vec3 dronePos = drone->getPosition();
+        Vec3 toTarget = dronePos - blasterPosition;
+
+        // Project onto ray
+        float t = Vec3::dot(toTarget, blasterDirection);
+        if (t < 0 || t > BLASTER_RANGE) continue;  // Behind or too far
+
+        // Check perpendicular distance
+        Vec3 closestPoint = blasterPosition + blasterDirection * t;
+        Vec3 diff = dronePos - closestPoint;
+        float dist = diff.length();
+
+        if (dist < BLASTER_RADIUS) {
+            LOG_INFO(LOG_TAG_LEVEL1) << "Blaster HIT drone " << drone->getId() << "!";
+            drone->takeDamage(1);
+            m_stats.shotsHit++;
+            m_stats.targetsHit++;
+            return;  // One hit per shot
+        }
+    }
+}
+
+// =============================================================================
+// Phase-Specific Entity Spawning
+// =============================================================================
+
+void Level1TrainingSystem::spawnSaberDrillEntities() {
+    LOG_INFO(LOG_TAG_LEVEL1) << "Spawning saber drill entities...";
+
+    // Spawn 1-2 drones that fire slow projectiles
+    DroneConfig config1;
+    config1.behavior = DroneBehavior::HOVER;
+    config1.spawnPosition = Vec3(-1.5f, 1.5f, -3.0f);
+    config1.fireInterval = 3.0f;  // Slow fire rate
+    config1.canFire = true;
+    spawnDrone(config1);
+
+    DroneConfig config2;
+    config2.behavior = DroneBehavior::HOVER;
+    config2.spawnPosition = Vec3(1.5f, 1.8f, -3.5f);
+    config2.fireInterval = 4.0f;
+    config2.canFire = true;
+    spawnDrone(config2);
+
+    LOG_INFO(LOG_TAG_LEVEL1) << "Saber drill: " << m_drones.size() << " drones spawned";
+}
+
+void Level1TrainingSystem::spawnBlasterDrillEntities() {
+    LOG_INFO(LOG_TAG_LEVEL1) << "Spawning blaster drill entities...";
+
+    // Spawn 2 stationary + 1 orbiting drone as targets
+    DroneConfig hover1;
+    hover1.behavior = DroneBehavior::HOVER;
+    hover1.spawnPosition = Vec3(-2.0f, 1.3f, -3.0f);
+    hover1.canFire = false;  // Just targets
+    spawnDrone(hover1);
+
+    DroneConfig hover2;
+    hover2.behavior = DroneBehavior::HOVER;
+    hover2.spawnPosition = Vec3(2.0f, 1.7f, -3.5f);
+    hover2.canFire = false;
+    spawnDrone(hover2);
+
+    DroneConfig orbit1;
+    orbit1.behavior = DroneBehavior::SLOW_ORBIT;
+    orbit1.spawnPosition = Vec3(0, 2.0f, -4.0f);
+    orbit1.orbitRadius = 1.5f;
+    orbit1.orbitSpeed = 0.5f;  // Slow orbit
+    orbit1.canFire = false;
+    spawnDrone(orbit1);
+
+    LOG_INFO(LOG_TAG_LEVEL1) << "Blaster drill: " << m_drones.size() << " drones spawned";
+}
+
+void Level1TrainingSystem::spawnMixedDrillEntities() {
+    LOG_INFO(LOG_TAG_LEVEL1) << "Spawning mixed drill entities...";
+
+    // 1 shooting drone
+    DroneConfig shooter;
+    shooter.behavior = DroneBehavior::SLOW_ORBIT;
+    shooter.spawnPosition = Vec3(0, 1.5f, -3.0f);
+    shooter.orbitRadius = 2.0f;
+    shooter.orbitSpeed = 0.3f;
+    shooter.fireInterval = 2.5f;
+    shooter.canFire = true;
+    spawnDrone(shooter);
+
+    // 1 target drone
+    DroneConfig target;
+    target.behavior = DroneBehavior::HOVER;
+    target.spawnPosition = Vec3(-1.5f, 2.0f, -4.0f);
+    target.canFire = false;
+    spawnDrone(target);
+
+    // 1 dive attack drone (will attack at 30s mark)
+    DroneConfig diver;
+    diver.behavior = DroneBehavior::SLOW_DIVE;
+    diver.spawnPosition = Vec3(0, 2.5f, -5.0f);
+    diver.canFire = false;
+    spawnDrone(diver);
+
+    LOG_INFO(LOG_TAG_LEVEL1) << "Mixed drill: " << m_drones.size() << " drones spawned (1 will dive at 30s)";
 }
 
 } // namespace lst
