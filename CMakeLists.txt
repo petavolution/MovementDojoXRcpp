@@ -155,9 +155,8 @@ set(USD_SOURCES
     src/usd/USDLoader.cpp
 )
 
+# Legacy training sources removed - using data-driven TrainingSequenceController
 set(TRAINING_SOURCES
-    src/training/TrainingModule.cpp
-    src/training/FlowModes.cpp
 )
 
 set(ANALYTICS_SOURCES
@@ -184,53 +183,25 @@ set(PHYSICS_SOURCES
     src/physics/PhysicsEngine.cpp
 )
 
-# Main executable
-add_executable(lightsaber_trainer
-    src/main.cpp
-    ${CORE_SOURCES}
-    ${USD_SOURCES}
-    ${TRAINING_SOURCES}
-    ${ANALYTICS_SOURCES}
-    ${PROGRESSION_SOURCES}
-    ${OVERLAY_SOURCES}
-    ${VISUALIZATION_SOURCES}
-    ${HAPTIC_SOURCES}
-    ${PHYSICS_SOURCES}
-)
-
-# Link libraries
-target_link_libraries(lightsaber_trainer
-    ${OPENXR_LIBRARIES}
-    Threads::Threads
-)
-
-if(Vulkan_FOUND)
-    target_link_libraries(lightsaber_trainer ${Vulkan_LIBRARIES})
-endif()
-
-if(glfw3_FOUND)
-    target_link_libraries(lightsaber_trainer glfw)
-elseif(GLFW3_FOUND)
-    target_link_libraries(lightsaber_trainer ${GLFW3_LIBRARIES})
-endif()
-
-if(glm_FOUND)
-    target_link_libraries(lightsaber_trainer glm::glm)
-elseif(GLM_FOUND)
-    target_link_libraries(lightsaber_trainer ${GLM_LIBRARIES})
-endif()
-
-if(USD_FOUND)
-    target_link_libraries(lightsaber_trainer ${USD_LIBRARIES})
-endif()
-
-if(BULLET_FOUND)
-    target_link_libraries(lightsaber_trainer ${BULLET_LIBRARIES})
-elseif(Bullet_FOUND)
-    target_link_libraries(lightsaber_trainer
-        Bullet::Bullet
-    )
-endif()
+# =============================================================================
+# Legacy lightsaber_trainer executable (DEPRECATED)
+# =============================================================================
+# The old architecture used SessionManager + FlowModes + TrainingModule.
+# This has been replaced by the unified Engine + TrainingSequenceController.
+# Keeping this commented out for reference.
+#
+# add_executable(lightsaber_trainer
+#     src/main.cpp
+#     ${CORE_SOURCES}
+#     ${USD_SOURCES}
+#     ${TRAINING_SOURCES}
+#     ${ANALYTICS_SOURCES}
+#     ${PROGRESSION_SOURCES}
+#     ${OVERLAY_SOURCES}
+#     ${VISUALIZATION_SOURCES}
+#     ${HAPTIC_SOURCES}
+#     ${PHYSICS_SOURCES}
+# )
 
 # =============================================================================
 # Simplified executable using unified Engine architecture
@@ -298,7 +269,7 @@ if(BUILD_TESTS)
 endif()
 
 # Installation
-install(TARGETS lightsaber_trainer movement_dojo_simple
+install(TARGETS movement_dojo_simple
     RUNTIME DESTINATION bin
 )
 
