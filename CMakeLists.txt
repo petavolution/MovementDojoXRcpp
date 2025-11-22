@@ -243,6 +243,7 @@ add_executable(movement_dojo_simple
     ${ANALYTICS_SOURCES}
     ${PROGRESSION_SOURCES}
     src/core/Math.cpp
+    src/training/Level1Training.cpp
 )
 
 target_link_libraries(movement_dojo_simple

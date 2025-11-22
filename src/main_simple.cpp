@@ -57,6 +57,7 @@
 
 #include "core/Engine.h"
 #include "core/Logger.h"
+#include "training/Level1Training.h"
 #include <iostream>
 #include <csignal>
 #include <cstring>
@@ -405,6 +406,77 @@ int RunVrSmokeTest(const std::string& logPath) {
 }
 
 // =============================================================================
+// Level 1 Training Mode
+// =============================================================================
+
+/**
+ * RunLevel1Training - Dojo Level 1 Training Experience
+ *
+ * A gentle, tutorial-like training that demonstrates:
+ * - Saber basics (blocking + striking)
+ * - Blaster basics (aiming + shooting)
+ * - Simple drone encounters
+ *
+ * Flow: INTRO -> SABER_DRILL -> BLASTER_DRILL -> MIXED_DRILL -> SUMMARY
+ * Duration: ~3 minutes
+ *
+ * Returns 0 on completion, 1 on failure
+ */
+int RunLevel1Training(const std::string& logPath, bool headless, bool mock) {
+    LOG_INFO(LOG_TAG_ENGINE) << "========================================";
+    LOG_INFO(LOG_TAG_ENGINE) << "DOJO LEVEL 1 - Basic Training";
+    LOG_INFO(LOG_TAG_ENGINE) << "========================================";
+    LOG_INFO(LOG_TAG_ENGINE) << "A gentle introduction to dojo combat";
+    LOG_INFO(LOG_TAG_ENGINE) << "";
+
+    // Create engine
+    Engine engine;
+    g_engine = &engine;
+
+    EngineConfig config;
+    config.appName = "Dojo Level 1";
+    config.headlessMode = headless;
+    config.mockTracking = mock;
+
+    if (headless) {
+        LOG_INFO(LOG_TAG_ENGINE) << "Running in headless mode" << (mock ? " with mock tracking" : "");
+    } else {
+        LOG_INFO(LOG_TAG_ENGINE) << "Initializing VR...";
+    }
+
+    if (!engine.initialize(config)) {
+        LOG_ERROR(LOG_TAG_ENGINE) << "Failed to initialize engine";
+        LOG_ERROR(LOG_TAG_ENGINE) << "Check: (1) SteamVR running, (2) HMD connected, (3) Virtual Desktop streaming";
+        std::cout << "\nLevel 1 Training: FAIL - Could not initialize\n";
+        std::cout << "See log at: " << logPath << "\n";
+        engine.shutdown();
+        Logger::flush();
+        Logger::shutdown();
+        return 1;
+    }
+
+    // Add the Level 1 Training System
+    LOG_INFO(LOG_TAG_ENGINE) << "Loading Level 1 Training System...";
+    engine.addSystem<Level1TrainingSystem>();
+
+    LOG_INFO(LOG_TAG_ENGINE) << "Starting Level 1 session...";
+    LOG_INFO(LOG_TAG_ENGINE) << "Press Ctrl+C to exit at any time";
+    LOG_INFO(LOG_TAG_ENGINE) << "";
+
+    engine.startSession();
+    engine.run();
+    engine.endSession();
+    engine.shutdown();
+
+    LOG_INFO(LOG_TAG_ENGINE) << "Level 1 Training session ended (logs flushed)";
+    std::cout << "\nLevel 1 Training: Completed\n";
+
+    Logger::flush();
+    Logger::shutdown();
+    return 0;
+}
+
+// =============================================================================
 // VR Diagnostics Mode
 // =============================================================================
 
@@ -608,6 +680,7 @@ int main(int argc, char* argv[]) {
     bool mockTracking = false;
     bool vrDiagnostics = false;
     bool vrSmokeTest = false;
+    bool level1Training = false;
     int maxFrames = 0;  // 0 = unlimited
     std::string scenePath;
     std::string logPath = "./logs/engine.log";
@@ -623,6 +696,7 @@ int main(int argc, char* argv[]) {
                       << "Options:\n"
                       << "  --vr-diagnostics    Run VR readiness check and exit\n"
                       << "  --vr-smoke-test     Run visual VR test with dojo scene\n"
+                      << "  --level1            Run Level 1 Training (tutorial)\n"
                       << "  --overlay           Run as VR overlay\n"
                       << "  --headless          Run without VR hardware (CLI testing)\n"
                       << "  --mock              Generate mock tracking data (with --headless)\n"
@@ -638,6 +712,8 @@ int main(int argc, char* argv[]) {
             vrDiagnostics = true;
         } else if (strcmp(argv[i], "--vr-smoke-test") == 0) {
             vrSmokeTest = true;
+        } else if (strcmp(argv[i], "--level1") == 0) {
+            level1Training = true;
         } else if (strcmp(argv[i], "--overlay") == 0) {
             overlayMode = true;
         } else if (strcmp(argv[i], "--headless") == 0) {
@@ -684,6 +760,11 @@ int main(int argc, char* argv[]) {
     // Handle VR smoke test mode
     if (vrSmokeTest) {
         return RunVrSmokeTest(logPath);
+    }
+
+    // Handle Level 1 Training mode
+    if (level1Training) {
+        return RunLevel1Training(logPath, headlessMode, mockTracking);
     }
 
     // Log startup
