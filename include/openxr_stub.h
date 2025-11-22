@@ -289,6 +289,35 @@ struct XrSystemProperties {
     } trackingProperties;
 };
 
+// Instance properties (runtime info)
+struct XrInstanceProperties {
+    int type;
+    void* next;
+    uint64_t runtimeVersion;
+    char runtimeName[128];
+};
+
+// View configuration type enum
+typedef enum XrViewConfigurationType {
+    XR_VIEW_CONFIGURATION_TYPE_PRIMARY_MONO = 1,
+    XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO_ENUM = 2,  // Avoid redefinition
+    XR_VIEW_CONFIGURATION_TYPE_PRIMARY_QUAD_VARJO = 1000037000,
+} XrViewConfigurationType;
+
+// Reference space type enum
+typedef enum XrReferenceSpaceType {
+    XR_REFERENCE_SPACE_TYPE_VIEW_ENUM = 1,   // Avoid redefinition
+    XR_REFERENCE_SPACE_TYPE_LOCAL_ENUM = 2,
+    XR_REFERENCE_SPACE_TYPE_STAGE_ENUM = 3,
+    XR_REFERENCE_SPACE_TYPE_UNBOUNDED_MSFT = 1000038000,
+    XR_REFERENCE_SPACE_TYPE_COMBINED_EYE_VARJO = 1000121000,
+} XrReferenceSpaceType;
+
+// Version macros
+#define XR_VERSION_MAJOR(version) (uint32_t)(((uint64_t)(version) >> 48) & 0xFFFFULL)
+#define XR_VERSION_MINOR(version) (uint32_t)(((uint64_t)(version) >> 32) & 0xFFFFULL)
+#define XR_VERSION_PATCH(version) (uint32_t)((uint64_t)(version) & 0xFFFFFFFFULL)
+
 // Instance and system creation
 struct XrApplicationInfo {
     char applicationName[128];
@@ -436,6 +465,9 @@ inline XrResult xrApplyHapticFeedback(XrSession, void*, void*) { return -1; }
 inline XrResult xrEnumerateInstanceExtensionProperties(const char*, uint32_t, uint32_t*, void*) { return -1; }
 inline XrResult xrGetSystemProperties(XrInstance, XrSystemId, void*) { return -1; }
 inline XrResult xrEnumerateViewConfigurationViews(XrInstance, XrSystemId, int, uint32_t, uint32_t*, void*) { return -1; }
+inline XrResult xrGetInstanceProperties(XrInstance, XrInstanceProperties*) { return -1; }
+inline XrResult xrEnumerateViewConfigurations(XrInstance, XrSystemId, uint32_t, uint32_t*, XrViewConfigurationType*) { return -1; }
+inline XrResult xrEnumerateReferenceSpaces(XrSession, uint32_t, uint32_t*, XrReferenceSpaceType*) { return -1; }
 
 // Type codes (minimal set)
 #define XR_TYPE_FRAME_STATE 0
@@ -472,6 +504,7 @@ inline XrResult xrEnumerateViewConfigurationViews(XrInstance, XrSystemId, int, u
 #define XR_TYPE_SYSTEM_GET_INFO 0
 #define XR_TYPE_SYSTEM_PROPERTIES 0
 #define XR_TYPE_ACTION_STATE_GET_INFO 0
+#define XR_TYPE_INSTANCE_PROPERTIES 0
 
 // Constants
 #define XR_MAX_APPLICATION_NAME_SIZE 128

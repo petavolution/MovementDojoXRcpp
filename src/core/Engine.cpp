@@ -585,6 +585,22 @@ bool Engine::createXRInstance() {
 
     LOG_INFO("XR") << "XR instance created successfully";
 
+    // Get runtime properties for diagnostics
+    XrInstanceProperties instanceProps = {XR_TYPE_INSTANCE_PROPERTIES};
+    result = xrGetInstanceProperties(m_xrInstance, &instanceProps);
+    if (XR_SUCCEEDED(result)) {
+        m_runtimeName = instanceProps.runtimeName;
+        uint32_t major = XR_VERSION_MAJOR(instanceProps.runtimeVersion);
+        uint32_t minor = XR_VERSION_MINOR(instanceProps.runtimeVersion);
+        uint32_t patch = XR_VERSION_PATCH(instanceProps.runtimeVersion);
+        LOG_INFO("XR") << "OpenXR Runtime: " << m_runtimeName
+                       << " v" << major << "." << minor << "." << patch;
+        log("OpenXR Runtime: " + m_runtimeName);
+    } else {
+        LOG_WARN("XR") << "Could not get runtime properties: " << xrResultToString(result);
+        m_runtimeName = "Unknown";
+    }
+
     // Get system
     XrSystemGetInfo systemInfo = {XR_TYPE_SYSTEM_GET_INFO};
     systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
@@ -594,79 +610,203 @@ bool Engine::createXRInstance() {
     if (XR_FAILED(result)) {
         LOG_ERROR("XR") << "Failed to get XR system: " << xrResultToString(result);
         LOG_ERROR("XR") << "Is an HMD connected and the runtime active?";
+        LOG_ERROR("XR") << "  For Quest 3 via Virtual Desktop: Ensure SteamVR is running";
+        LOG_ERROR("XR") << "  For Quest 3 via Link: Ensure Oculus app is running";
         log("Failed to get XR system - is HMD connected?");
         return false;
     }
 
     // Get system properties
     XrSystemProperties systemProps = {XR_TYPE_SYSTEM_PROPERTIES};
-    xrGetSystemProperties(m_xrInstance, m_xrSystemId, &systemProps);
+    result = xrGetSystemProperties(m_xrInstance, m_xrSystemId, &systemProps);
+    if (XR_SUCCEEDED(result)) {
+        m_systemName = systemProps.systemName;
+        LOG_INFO("XR") << "XR System: " << m_systemName;
+        LOG_INFO("XR") << "  System ID: " << m_xrSystemId;
+        LOG_INFO("XR") << "  Vendor ID: " << systemProps.vendorId;
+        LOG_INFO("XR") << "  Max layers: " << systemProps.graphicsProperties.maxLayerCount;
+        LOG_INFO("XR") << "  Max swapchain size: " << systemProps.graphicsProperties.maxSwapchainImageWidth
+                       << "x" << systemProps.graphicsProperties.maxSwapchainImageHeight;
+        LOG_INFO("XR") << "  Orientation tracking: " << (systemProps.trackingProperties.orientationTracking ? "yes" : "no");
+        LOG_INFO("XR") << "  Position tracking: " << (systemProps.trackingProperties.positionTracking ? "yes" : "no");
 
-    LOG_INFO("XR") << "XR System: " << systemProps.systemName;
-    LOG_INFO("XR") << "  Vendor ID: " << systemProps.vendorId;
-    LOG_INFO("XR") << "  Max layers: " << systemProps.graphicsProperties.maxLayerCount;
-    LOG_INFO("XR") << "  Max swapchain size: " << systemProps.graphicsProperties.maxSwapchainImageWidth
-                   << "x" << systemProps.graphicsProperties.maxSwapchainImageHeight;
-
-    log("XR System: " + std::string(systemProps.systemName));
+        log("XR System: " + m_systemName);
+    } else {
+        LOG_WARN("XR") << "Could not get system properties: " << xrResultToString(result);
+        m_systemName = "Unknown";
+    }
 
     return true;
 }
 
 bool Engine::createXRSession() {
+    LOG_DEBUG(LOG_TAG_XR) << "Creating XR session for system " << m_xrSystemId;
+
     // For now, create a headless session (graphics binding handled separately)
     // In production, would create proper Vulkan/OpenGL binding
-
     XrSessionCreateInfo sessionInfo = {XR_TYPE_SESSION_CREATE_INFO};
     sessionInfo.systemId = m_xrSystemId;
     sessionInfo.next = nullptr;  // Graphics binding would go here
 
     XrResult result = xrCreateSession(m_xrInstance, &sessionInfo, &m_xrSession);
     if (XR_FAILED(result)) {
-        log("Failed to create XR session");
+        LOG_ERROR(LOG_TAG_XR) << "Failed to create XR session: " << xrResultToString(result);
+        LOG_ERROR(LOG_TAG_XR) << "  System ID: " << m_xrSystemId;
+        LOG_ERROR(LOG_TAG_XR) << "  Possible causes:";
+        LOG_ERROR(LOG_TAG_XR) << "    - HMD disconnected after system query";
+        LOG_ERROR(LOG_TAG_XR) << "    - Graphics binding mismatch";
+        LOG_ERROR(LOG_TAG_XR) << "    - Runtime configuration issue";
+        return false;
+    }
+    LOG_INFO(LOG_TAG_XR) << "XR session created successfully";
+
+    // Query available view configurations
+    uint32_t viewConfigCount = 0;
+    result = xrEnumerateViewConfigurations(m_xrInstance, m_xrSystemId, 0, &viewConfigCount, nullptr);
+    if (XR_SUCCEEDED(result) && viewConfigCount > 0) {
+        std::vector<XrViewConfigurationType> viewConfigs(viewConfigCount);
+        xrEnumerateViewConfigurations(m_xrInstance, m_xrSystemId, viewConfigCount, &viewConfigCount, viewConfigs.data());
+        LOG_DEBUG(LOG_TAG_XR) << "Available view configurations: " << viewConfigCount;
+        for (uint32_t i = 0; i < viewConfigCount; i++) {
+            const char* configName = "UNKNOWN";
+            switch (viewConfigs[i]) {
+                case XR_VIEW_CONFIGURATION_TYPE_PRIMARY_MONO: configName = "PRIMARY_MONO"; break;
+                case XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO: configName = "PRIMARY_STEREO"; break;
+                case XR_VIEW_CONFIGURATION_TYPE_PRIMARY_QUAD_VARJO: configName = "PRIMARY_QUAD_VARJO"; break;
+                default: break;
+            }
+            LOG_DEBUG(LOG_TAG_XR) << "  [" << i << "] " << configName;
+        }
+    }
+
+    // Get view configuration views for stereo
+    uint32_t viewCount = 0;
+    result = xrEnumerateViewConfigurationViews(m_xrInstance, m_xrSystemId,
+        XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, 0, &viewCount, nullptr);
+    if (XR_FAILED(result)) {
+        LOG_ERROR(LOG_TAG_XR) << "Failed to enumerate view config views: " << xrResultToString(result);
         return false;
     }
 
-    // Get view configuration
-    uint32_t viewCount = 0;
-    xrEnumerateViewConfigurationViews(m_xrInstance, m_xrSystemId,
-        XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, 0, &viewCount, nullptr);
+    if (viewCount == 0) {
+        LOG_ERROR(LOG_TAG_XR) << "No stereo views available - HMD may not support stereo rendering";
+        return false;
+    }
 
     m_viewConfigViews.resize(viewCount, {XR_TYPE_VIEW_CONFIGURATION_VIEW});
-    xrEnumerateViewConfigurationViews(m_xrInstance, m_xrSystemId,
+    result = xrEnumerateViewConfigurationViews(m_xrInstance, m_xrSystemId,
         XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, viewCount, &viewCount, m_viewConfigViews.data());
+    if (XR_FAILED(result)) {
+        LOG_ERROR(LOG_TAG_XR) << "Failed to get view config details: " << xrResultToString(result);
+        return false;
+    }
+
+    LOG_INFO(LOG_TAG_XR) << "View configuration: " << viewCount << " views (stereo)";
+    for (uint32_t i = 0; i < viewCount; i++) {
+        const auto& v = m_viewConfigViews[i];
+        LOG_DEBUG(LOG_TAG_XR) << "  View " << i << ": "
+                              << v.recommendedImageRectWidth << "x" << v.recommendedImageRectHeight
+                              << " (max " << v.maxImageRectWidth << "x" << v.maxImageRectHeight << ")"
+                              << " samples=" << v.recommendedSwapchainSampleCount;
+
+        // Store resolution in our view structs
+        if (i < m_views.size()) {
+            m_views[i].width = v.recommendedImageRectWidth;
+            m_views[i].height = v.recommendedImageRectHeight;
+        }
+    }
 
     m_xrViews.resize(viewCount, {XR_TYPE_VIEW});
     m_views.resize(viewCount);
 
+    // Update view resolution from config
+    for (size_t i = 0; i < m_views.size() && i < m_viewConfigViews.size(); i++) {
+        m_views[i].width = m_viewConfigViews[i].recommendedImageRectWidth;
+        m_views[i].height = m_viewConfigViews[i].recommendedImageRectHeight;
+    }
+
+    LOG_INFO(LOG_TAG_XR) << "Session created with " << viewCount << " views";
     return true;
 }
 
 bool Engine::createXRSpaces() {
-    // Stage space (room-scale)
-    XrReferenceSpaceCreateInfo spaceInfo = {XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
-    spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
-    spaceInfo.poseInReferenceSpace = {{0, 0, 0, 1}, {0, 0, 0}};
+    LOG_DEBUG(LOG_TAG_XR) << "Creating reference spaces...";
 
-    XrResult result = xrCreateReferenceSpace(m_xrSession, &spaceInfo, &m_stageSpace);
-    if (XR_FAILED(result)) {
-        // Fall back to local space
-        spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
-        result = xrCreateReferenceSpace(m_xrSession, &spaceInfo, &m_stageSpace);
-        if (XR_FAILED(result)) {
-            log("Failed to create reference space");
+    // First, enumerate available reference space types
+    uint32_t spaceCount = 0;
+    XrResult result = xrEnumerateReferenceSpaces(m_xrSession, 0, &spaceCount, nullptr);
+    if (XR_SUCCEEDED(result) && spaceCount > 0) {
+        std::vector<XrReferenceSpaceType> spaces(spaceCount);
+        xrEnumerateReferenceSpaces(m_xrSession, spaceCount, &spaceCount, spaces.data());
+
+        LOG_INFO(LOG_TAG_XR) << "Available reference spaces: " << spaceCount;
+        bool hasStage = false, hasLocal = false, hasView = false;
+        for (uint32_t i = 0; i < spaceCount; i++) {
+            const char* spaceName = "UNKNOWN";
+            switch (spaces[i]) {
+                case XR_REFERENCE_SPACE_TYPE_VIEW: spaceName = "VIEW"; hasView = true; break;
+                case XR_REFERENCE_SPACE_TYPE_LOCAL: spaceName = "LOCAL"; hasLocal = true; break;
+                case XR_REFERENCE_SPACE_TYPE_STAGE: spaceName = "STAGE"; hasStage = true; break;
+                case XR_REFERENCE_SPACE_TYPE_UNBOUNDED_MSFT: spaceName = "UNBOUNDED_MSFT"; break;
+                case XR_REFERENCE_SPACE_TYPE_COMBINED_EYE_VARJO: spaceName = "COMBINED_EYE_VARJO"; break;
+                default: break;
+            }
+            LOG_DEBUG(LOG_TAG_XR) << "  [" << i << "] " << spaceName;
+        }
+
+        if (!hasStage) {
+            LOG_WARN(LOG_TAG_XR) << "STAGE space not available - room-scale tracking may be limited";
+        }
+        if (!hasLocal) {
+            LOG_ERROR(LOG_TAG_XR) << "LOCAL space not available - this is required for VR";
             return false;
         }
     }
 
-    // Local space
+    XrReferenceSpaceCreateInfo spaceInfo = {XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+    spaceInfo.poseInReferenceSpace = {{0, 0, 0, 1}, {0, 0, 0}};  // Identity pose
+
+    // Stage space (room-scale) - preferred for dojo combat
+    spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+    result = xrCreateReferenceSpace(m_xrSession, &spaceInfo, &m_stageSpace);
+    if (XR_SUCCEEDED(result)) {
+        LOG_INFO(LOG_TAG_XR) << "Created STAGE space (room-scale tracking)";
+    } else {
+        LOG_WARN(LOG_TAG_XR) << "Failed to create STAGE space: " << xrResultToString(result);
+        LOG_WARN(LOG_TAG_XR) << "  Falling back to LOCAL space as primary tracking space";
+
+        // Fall back to local space
+        spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
+        result = xrCreateReferenceSpace(m_xrSession, &spaceInfo, &m_stageSpace);
+        if (XR_FAILED(result)) {
+            LOG_ERROR(LOG_TAG_XR) << "Failed to create LOCAL space as fallback: " << xrResultToString(result);
+            LOG_ERROR(LOG_TAG_XR) << "  Cannot establish tracking origin - aborting";
+            return false;
+        }
+        LOG_INFO(LOG_TAG_XR) << "Using LOCAL space as primary (seated/standing mode)";
+    }
+
+    // Local space (for seated/standing reference)
     spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
-    xrCreateReferenceSpace(m_xrSession, &spaceInfo, &m_localSpace);
+    result = xrCreateReferenceSpace(m_xrSession, &spaceInfo, &m_localSpace);
+    if (XR_FAILED(result)) {
+        LOG_WARN(LOG_TAG_XR) << "Failed to create separate LOCAL space: " << xrResultToString(result);
+        // Not fatal - we can use stage space
+    } else {
+        LOG_DEBUG(LOG_TAG_XR) << "Created LOCAL space";
+    }
 
-    // View space
+    // View space (head-locked content)
     spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
-    xrCreateReferenceSpace(m_xrSession, &spaceInfo, &m_viewSpace);
+    result = xrCreateReferenceSpace(m_xrSession, &spaceInfo, &m_viewSpace);
+    if (XR_FAILED(result)) {
+        LOG_WARN(LOG_TAG_XR) << "Failed to create VIEW space: " << xrResultToString(result);
+        // Not fatal - head-locked overlays won't work
+    } else {
+        LOG_DEBUG(LOG_TAG_XR) << "Created VIEW space (for head-locked UI)";
+    }
 
+    LOG_INFO(LOG_TAG_XR) << "Reference spaces initialized successfully";
     return true;
 }
 
@@ -883,25 +1023,92 @@ void Engine::pollXREvents() {
 }
 
 void Engine::handleSessionStateChange(XrSessionState newState) {
+    // Convert state to readable string for logging
+    auto stateToString = [](XrSessionState state) -> const char* {
+        switch (state) {
+            case XR_SESSION_STATE_UNKNOWN:        return "UNKNOWN";
+            case XR_SESSION_STATE_IDLE:           return "IDLE";
+            case XR_SESSION_STATE_READY:          return "READY";
+            case XR_SESSION_STATE_SYNCHRONIZED:   return "SYNCHRONIZED";
+            case XR_SESSION_STATE_VISIBLE:        return "VISIBLE";
+            case XR_SESSION_STATE_FOCUSED:        return "FOCUSED";
+            case XR_SESSION_STATE_STOPPING:       return "STOPPING";
+            case XR_SESSION_STATE_LOSS_PENDING:   return "LOSS_PENDING";
+            case XR_SESSION_STATE_EXITING:        return "EXITING";
+            default:                              return "INVALID";
+        }
+    };
+
+    XrSessionState oldState = m_xrSessionState;
     m_xrSessionState = newState;
 
+    // Log all state transitions with context
+    LOG_INFO(LOG_TAG_XR) << "Session state: " << stateToString(oldState)
+                         << " -> " << stateToString(newState);
+
     switch (newState) {
+        case XR_SESSION_STATE_IDLE:
+            LOG_DEBUG(LOG_TAG_XR) << "  Session created, waiting for runtime";
+            break;
+
         case XR_SESSION_STATE_READY: {
+            LOG_INFO(LOG_TAG_XR) << "  Session ready - beginning XR session...";
             XrSessionBeginInfo beginInfo = {XR_TYPE_SESSION_BEGIN_INFO};
             beginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-            xrBeginSession(m_xrSession, &beginInfo);
-            m_xrReady = true;
+
+            XrResult result = xrBeginSession(m_xrSession, &beginInfo);
+            if (XR_SUCCEEDED(result)) {
+                m_xrReady = true;
+                LOG_INFO(LOG_TAG_XR) << "  XR session begun successfully - rendering enabled";
+            } else {
+                LOG_ERROR(LOG_TAG_XR) << "  Failed to begin XR session: " << xrResultToString(result);
+                LOG_ERROR(LOG_TAG_XR) << "  This may indicate a runtime or HMD configuration issue";
+                m_xrReady = false;
+            }
             break;
         }
+
+        case XR_SESSION_STATE_SYNCHRONIZED:
+            LOG_INFO(LOG_TAG_XR) << "  Session synchronized with runtime";
+            break;
+
+        case XR_SESSION_STATE_VISIBLE:
+            LOG_INFO(LOG_TAG_XR) << "  Session visible - HMD displaying content";
+            break;
+
+        case XR_SESSION_STATE_FOCUSED:
+            LOG_INFO(LOG_TAG_XR) << "  Session focused - full input available";
+            if (m_sessionActive) {
+                resumeSession();
+            }
+            break;
+
         case XR_SESSION_STATE_STOPPING:
-            xrEndSession(m_xrSession);
+            LOG_INFO(LOG_TAG_XR) << "  Session stopping - ending XR session...";
+            {
+                XrResult result = xrEndSession(m_xrSession);
+                if (XR_SUCCEEDED(result)) {
+                    LOG_INFO(LOG_TAG_XR) << "  XR session ended cleanly";
+                } else {
+                    LOG_WARN(LOG_TAG_XR) << "  xrEndSession returned: " << xrResultToString(result);
+                }
+            }
             m_xrReady = false;
             break;
+
         case XR_SESSION_STATE_EXITING:
-        case XR_SESSION_STATE_LOSS_PENDING:
+            LOG_WARN(LOG_TAG_XR) << "  Session exiting - user requested quit or runtime closing";
             m_running = false;
             break;
+
+        case XR_SESSION_STATE_LOSS_PENDING:
+            LOG_ERROR(LOG_TAG_XR) << "  Session loss pending - runtime disconnecting!";
+            LOG_ERROR(LOG_TAG_XR) << "  Check HMD connection and Virtual Desktop/SteamVR status";
+            m_running = false;
+            break;
+
         default:
+            LOG_WARN(LOG_TAG_XR) << "  Unhandled session state: " << static_cast<int>(newState);
             break;
     }
 }
