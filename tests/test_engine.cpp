@@ -395,6 +395,159 @@ bool testXRViewFov() {
 }
 
 // =============================================================================
+// Headless Engine Startup Tests (Critical Path Validation)
+// =============================================================================
+
+bool testEngineHeadlessStartup() {
+    TEST("Engine headless initialization");
+
+    Engine engine;
+
+    EngineConfig config;
+    config.appName = "Test App";
+    config.headlessMode = true;
+    config.mockTracking = false;
+
+    bool initResult = engine.initialize(config);
+    ASSERT_TRUE(initResult, "Engine should initialize in headless mode");
+
+    engine.shutdown();
+
+    PASS();
+    return true;
+}
+
+bool testEngineHeadlessWithMockTracking() {
+    TEST("Engine headless with mock tracking");
+
+    Engine engine;
+
+    EngineConfig config;
+    config.appName = "Mock Test";
+    config.headlessMode = true;
+    config.mockTracking = true;
+
+    bool initResult = engine.initialize(config);
+    ASSERT_TRUE(initResult, "Engine should initialize with mock tracking");
+
+    // Run a few frames
+    for (int i = 0; i < 10; i++) {
+        bool tickResult = engine.tick();
+        ASSERT_TRUE(tickResult, "tick() should succeed in headless mode");
+    }
+
+    engine.shutdown();
+
+    PASS();
+    return true;
+}
+
+bool testEngineSystemAttachment() {
+    TEST("Engine system attachment in headless mode");
+
+    Engine engine;
+
+    EngineConfig config;
+    config.headlessMode = true;
+    config.mockTracking = true;
+
+    engine.initialize(config);
+
+    // Attach a mock system
+    MockSystem* mockSystem = engine.addSystem<MockSystem>();
+    ASSERT_TRUE(mockSystem != nullptr, "addSystem should return valid pointer");
+    ASSERT_TRUE(mockSystem->attachCalled, "System onAttach should be called");
+
+    // Run a frame to trigger update
+    engine.tick();
+    ASSERT_TRUE(mockSystem->updateCount > 0, "System onUpdate should be called");
+
+    engine.shutdown();
+    ASSERT_TRUE(mockSystem->detachCalled, "System onDetach should be called on shutdown");
+
+    PASS();
+    return true;
+}
+
+bool testEngineSessionLifecycle() {
+    TEST("Engine session lifecycle");
+
+    Engine engine;
+
+    EngineConfig config;
+    config.headlessMode = true;
+    config.mockTracking = true;
+
+    engine.initialize(config);
+
+    MockSystem* mockSystem = engine.addSystem<MockSystem>();
+
+    // Start session
+    engine.startSession();
+    ASSERT_EQ(mockSystem->sessionStartCount, 1, "Session start should be called");
+
+    // Run frames
+    for (int i = 0; i < 5; i++) {
+        engine.tick();
+    }
+
+    // End session
+    engine.endSession();
+    ASSERT_EQ(mockSystem->sessionEndCount, 1, "Session end should be called");
+
+    engine.shutdown();
+
+    PASS();
+    return true;
+}
+
+bool testEngineFrameContextData() {
+    TEST("Engine provides valid frame context data");
+
+    Engine engine;
+
+    EngineConfig config;
+    config.headlessMode = true;
+    config.mockTracking = true;
+
+    engine.initialize(config);
+
+    // Custom system to capture frame context
+    class ContextCapture : public System {
+    public:
+        const char* getName() const override { return "ContextCapture"; }
+        FrameContext lastContext;
+        bool captured = false;
+
+        void onUpdate(const FrameContext& ctx) override {
+            lastContext = ctx;
+            captured = true;
+        }
+    };
+
+    ContextCapture* capture = engine.addSystem<ContextCapture>();
+
+    // Run a few frames
+    for (int i = 0; i < 5; i++) {
+        engine.tick();
+    }
+
+    ASSERT_TRUE(capture->captured, "Context should be captured");
+    ASSERT_TRUE(capture->lastContext.deltaTime > 0, "Delta time should be positive");
+    ASSERT_TRUE(capture->lastContext.totalTime > 0, "Total time should be positive");
+    ASSERT_TRUE(capture->lastContext.sessionReady, "Session should be ready in headless mode");
+
+    // With mock tracking, controllers should be tracked
+    ASSERT_TRUE(capture->lastContext.leftController.isTracked, "Left controller should be tracked with mock");
+    ASSERT_TRUE(capture->lastContext.rightController.isTracked, "Right controller should be tracked with mock");
+
+    engine.shutdown();
+
+    PASS();
+    return true;
+}
+
+// =============================================================================
 // Test Runner
 // =============================================================================
 
@@ -434,6 +587,14 @@ int runEngineTests() {
     testControllerStateInit();
     testColorPresets();
     testXRViewFov();
+
+    // Headless startup tests (critical path validation)
+    std::cout << "\n[Headless Startup Tests]" << std::endl;
+    testEngineHeadlessStartup();
+    testEngineHeadlessWithMockTracking();
+    testEngineSystemAttachment();
+    testEngineSessionLifecycle();
+    testEngineFrameContextData();
 
     // Summary
     std::cout << "\n========================================" << std::endl;

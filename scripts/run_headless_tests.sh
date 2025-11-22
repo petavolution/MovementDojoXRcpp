@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
             CATEGORY="$2"
             shift 2
             ;;
-        --math|--physics|--session|--viz|--haptics|--analytics|--progression|--integration)
+        --math|--physics|--session|--viz|--haptics|--analytics|--progression|--integration|--engine)
             CATEGORY="${1#--}"
             shift
             ;;
@@ -79,7 +79,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --analytics   Run analytics tests only"
             echo "  --progression Run progression tests only"
             echo "  --integration Run integration tests only"
-            echo "  --core        Run core engine tests (math, physics, session)"
+            echo "  --engine      Run unified Engine architecture tests"
+            echo "  --core        Run core engine tests (math, physics, session, engine)"
             echo "  --all         Run all test categories"
             echo ""
             echo "Options:"
