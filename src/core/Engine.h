@@ -327,6 +327,15 @@ private:
     ControllerState m_rightController;
     Transform m_headPose;
 
+    // Tracking state monitoring
+    int m_leftHandLostFrames = 0;
+    int m_rightHandLostFrames = 0;
+    bool m_leftHandWarnedLost = false;
+    bool m_rightHandWarnedLost = false;
+    bool m_leftTriggerBoundLogged = false;
+    bool m_rightTriggerBoundLogged = false;
+    static constexpr int TRACKING_LOST_WARN_FRAMES = 90;  // ~1 second at 90Hz
+
     // -------------------------------------------------------------------------
     // Scene
     // -------------------------------------------------------------------------

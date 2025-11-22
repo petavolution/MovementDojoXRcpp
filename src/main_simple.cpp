@@ -14,6 +14,7 @@
 #include <csignal>
 #include <cstring>
 #include <chrono>
+#include <cmath>
 
 using namespace lst;
 
@@ -141,6 +142,215 @@ public:
 private:
     bool m_hapticTriggered = false;
 };
+
+// =============================================================================
+// Dojo Smoke Test System
+// =============================================================================
+
+/**
+ * DojoSmokeTestSystem - Minimal scene to verify VR setup visually
+ *
+ * Creates:
+ * - Floor plane
+ * - Simple walls/pillars
+ * - Saber placeholder on right hand
+ * - Blaster placeholder on left hand
+ * - Static drone sphere placeholder
+ */
+class DojoSmokeTestSystem : public System {
+public:
+    const char* getName() const override { return "DojoSmokeTest"; }
+
+    bool onAttach(Engine* engine) override {
+        m_engine = engine;
+        LOG_INFO(LOG_TAG_DIAG) << "DojoSmokeTest: Creating test scene...";
+
+        // Floor plane (large flat cube)
+        SceneObject floor;
+        floor.name = "Floor";
+        floor.mesh = Mesh::createCube(1.0f);
+        floor.transform.position = Vec3(0, -0.01f, 0);
+        floor.transform.scale = Vec3(5.0f, 0.02f, 5.0f);
+        floor.material.baseColor = Color(0.2f, 0.2f, 0.25f);  // Dark gray
+        engine->addSceneObject(floor);
+        LOG_DEBUG(LOG_TAG_DIAG) << "  Created: Floor (5m x 5m)";
+
+        // Corner pillars
+        const float pillarHeight = 2.5f;
+        const float pillarSize = 0.15f;
+        const float arenaRadius = 2.0f;
+        Color pillarColor(0.4f, 0.1f, 0.1f);  // Dark red
+
+        for (int i = 0; i < 4; i++) {
+            float angle = (i * 90.0f + 45.0f) * 3.14159f / 180.0f;
+            float x = arenaRadius * std::cos(angle);
+            float z = arenaRadius * std::sin(angle);
+
+            SceneObject pillar;
+            pillar.name = "Pillar" + std::to_string(i);
+            pillar.mesh = Mesh::createCube(1.0f);
+            pillar.transform.position = Vec3(x, pillarHeight / 2, z);
+            pillar.transform.scale = Vec3(pillarSize, pillarHeight, pillarSize);
+            pillar.material.baseColor = pillarColor;
+            engine->addSceneObject(pillar);
+        }
+        LOG_DEBUG(LOG_TAG_DIAG) << "  Created: 4 corner pillars";
+
+        // Right hand: Saber placeholder (elongated cyan cylinder-like shape)
+        SceneObject saber;
+        saber.name = "Saber";
+        saber.mesh = Mesh::createCube(1.0f);
+        saber.transform.scale = Vec3(0.025f, 0.025f, 0.8f);  // Thin and long
+        saber.material.baseColor = Color(0.2f, 0.9f, 1.0f);  // Cyan/blue glow
+        saber.material.emissive = 0.6f;  // Glow intensity
+        engine->addSceneObject(saber);
+        LOG_DEBUG(LOG_TAG_DIAG) << "  Created: Saber (right hand)";
+
+        // Left hand: Blaster placeholder (compact box)
+        SceneObject blaster;
+        blaster.name = "Blaster";
+        blaster.mesh = Mesh::createCube(1.0f);
+        blaster.transform.scale = Vec3(0.04f, 0.08f, 0.15f);  // Compact gun shape
+        blaster.material.baseColor = Color(0.3f, 0.3f, 0.35f);  // Metallic gray
+        engine->addSceneObject(blaster);
+        LOG_DEBUG(LOG_TAG_DIAG) << "  Created: Blaster (left hand)";
+
+        // Static drone placeholder (floating sphere)
+        SceneObject drone;
+        drone.name = "DroneDummy";
+        drone.mesh = Mesh::createSphere(0.15f);
+        drone.transform.position = Vec3(0, 1.5f, -1.5f);  // Floating in front
+        drone.material.baseColor = Color(0.8f, 0.2f, 0.2f);  // Red enemy
+        drone.material.emissive = 0.3f;  // Glow intensity
+        engine->addSceneObject(drone);
+        LOG_DEBUG(LOG_TAG_DIAG) << "  Created: Dummy drone at (0, 1.5, -1.5)";
+
+        LOG_INFO(LOG_TAG_DIAG) << "DojoSmokeTest: Scene created with 8 objects";
+        return true;
+    }
+
+    void onUpdate(const FrameContext& ctx) override {
+        // Update weapon positions to follow controller poses
+        if (ctx.rightController.isTracked) {
+            if (auto* saber = m_engine->getSceneObject("Saber")) {
+                // Offset saber forward from grip
+                Transform saberPose = ctx.rightController.pose;
+                Vec3 forward = saberPose.orientation.rotate(Vec3(0, 0, -0.4f));
+                saber->transform.position = saberPose.position + forward;
+                saber->transform.orientation = saberPose.orientation;
+            }
+        }
+
+        if (ctx.leftController.isTracked) {
+            if (auto* blaster = m_engine->getSceneObject("Blaster")) {
+                // Offset blaster forward from grip
+                Transform blasterPose = ctx.leftController.pose;
+                Vec3 forward = blasterPose.orientation.rotate(Vec3(0, 0, -0.08f));
+                blaster->transform.position = blasterPose.position + forward;
+                blaster->transform.orientation = blasterPose.orientation;
+            }
+        }
+
+        // Animate drone (slow hover)
+        if (auto* drone = m_engine->getSceneObject("DroneDummy")) {
+            float hover = std::sin(ctx.totalTime * 2.0f) * 0.05f;
+            drone->transform.position.y = 1.5f + hover;
+        }
+
+        // Periodic status logging
+        m_statusTimer += ctx.deltaTime;
+        if (m_statusTimer >= 1.0) {
+            m_statusTimer = 0;
+            LOG_DEBUG(LOG_TAG_DIAG) << "SmokeTest status: "
+                << "HMD=" << (ctx.headPose.position.y > 0.1f ? "OK" : "low")
+                << " L=" << (ctx.leftController.isTracked ? "tracked" : "lost")
+                << " R=" << (ctx.rightController.isTracked ? "tracked" : "lost");
+        }
+    }
+
+    void onRender(const FrameContext& ctx) override {
+        // Draw tracking status indicators
+        if (ctx.rightController.isTracked) {
+            // Draw saber trail hint
+            Vec3 tip = ctx.rightController.position +
+                ctx.rightController.pose.orientation.rotate(Vec3(0, 0, -0.8f));
+            m_engine->drawLine(ctx.rightController.position, tip, Color(0.2f, 0.9f, 1.0f), 2.0f);
+        }
+
+        if (ctx.leftController.isTracked) {
+            // Draw blaster aim line
+            Vec3 aim = ctx.leftController.position +
+                ctx.leftController.pose.orientation.rotate(Vec3(0, 0, -2.0f));
+            m_engine->drawLine(ctx.leftController.position, aim, Color(1.0f, 0.3f, 0.3f), 1.0f);
+        }
+    }
+
+private:
+    double m_statusTimer = 0;
+};
+
+// =============================================================================
+// VR Smoke Test Mode
+// =============================================================================
+
+/**
+ * RunVrSmokeTest - Visual VR test with minimal dojo scene
+ *
+ * Tests visual rendering with:
+ * - Floor and pillars
+ * - Saber on right hand
+ * - Blaster on left hand
+ * - Dummy drone target
+ *
+ * Returns 0 on completion
+ */
+int RunVrSmokeTest(const std::string& logPath) {
+    LOG_INFO(LOG_TAG_DIAG) << "========================================";
+    LOG_INFO(LOG_TAG_DIAG) << "VR Smoke Test - Dojo Visual Check";
+    LOG_INFO(LOG_TAG_DIAG) << "========================================";
+    LOG_INFO(LOG_TAG_DIAG) << "Press Ctrl+C to exit when done viewing";
+    LOG_INFO(LOG_TAG_DIAG) << "";
+
+    // Create engine
+    Engine engine;
+    g_engine = &engine;
+
+    EngineConfig config;
+    config.appName = "Dojo Smoke Test";
+    config.headlessMode = false;
+    config.mockTracking = false;
+
+    LOG_INFO(LOG_TAG_DIAG) << "Initializing VR...";
+    if (!engine.initialize(config)) {
+        LOG_ERROR(LOG_TAG_DIAG) << "Failed to initialize VR";
+        std::cout << "\nVR Smoke Test: FAIL - Could not initialize VR\n";
+        std::cout << "See log at: " << logPath << "\n";
+        Logger::shutdown();
+        return 1;
+    }
+
+    // Add only the smoke test system
+    engine.addSystem<DojoSmokeTestSystem>();
+
+    LOG_INFO(LOG_TAG_DIAG) << "Starting VR session...";
+    LOG_INFO(LOG_TAG_DIAG) << "Look around - you should see:";
+    LOG_INFO(LOG_TAG_DIAG) << "  - Gray floor";
+    LOG_INFO(LOG_TAG_DIAG) << "  - 4 red corner pillars";
+    LOG_INFO(LOG_TAG_DIAG) << "  - Cyan saber in right hand";
+    LOG_INFO(LOG_TAG_DIAG) << "  - Gray blaster in left hand";
+    LOG_INFO(LOG_TAG_DIAG) << "  - Red drone sphere floating ahead";
+
+    engine.startSession();
+    engine.run();
+    engine.endSession();
+    engine.shutdown();
+
+    LOG_INFO(LOG_TAG_DIAG) << "VR Smoke Test completed";
+    std::cout << "\nVR Smoke Test: Completed\n";
+
+    Logger::shutdown();
+    return 0;
+}
 
 // =============================================================================
 // VR Diagnostics Mode
@@ -338,6 +548,7 @@ int main(int argc, char* argv[]) {
     bool headlessMode = false;
     bool mockTracking = false;
     bool vrDiagnostics = false;
+    bool vrSmokeTest = false;
     int maxFrames = 0;  // 0 = unlimited
     std::string scenePath;
     std::string logPath = "./logs/engine.log";
@@ -352,6 +563,7 @@ int main(int argc, char* argv[]) {
                       << "Usage: " << argv[0] << " [options]\n\n"
                       << "Options:\n"
                       << "  --vr-diagnostics    Run VR readiness check and exit\n"
+                      << "  --vr-smoke-test     Run visual VR test with dojo scene\n"
                       << "  --overlay           Run as VR overlay\n"
                       << "  --headless          Run without VR hardware (CLI testing)\n"
                       << "  --mock              Generate mock tracking data (with --headless)\n"
@@ -365,6 +577,8 @@ int main(int argc, char* argv[]) {
             return 0;
         } else if (strcmp(argv[i], "--vr-diagnostics") == 0) {
             vrDiagnostics = true;
+        } else if (strcmp(argv[i], "--vr-smoke-test") == 0) {
+            vrSmokeTest = true;
         } else if (strcmp(argv[i], "--overlay") == 0) {
             overlayMode = true;
         } else if (strcmp(argv[i], "--headless") == 0) {
@@ -406,6 +620,11 @@ int main(int argc, char* argv[]) {
     // Handle VR diagnostics mode
     if (vrDiagnostics) {
         return RunVrDiagnostics(logPath);
+    }
+
+    // Handle VR smoke test mode
+    if (vrSmokeTest) {
+        return RunVrSmokeTest(logPath);
     }
 
     // Log startup

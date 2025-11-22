@@ -673,87 +673,143 @@ bool Engine::createXRSwapchains() {
 }
 
 bool Engine::createXRActions() {
+    LOG_INFO(LOG_TAG_INPUT) << "Setting up input actions for dojo combat...";
+
     // Create action set
     XrActionSetCreateInfo actionSetInfo = {XR_TYPE_ACTION_SET_CREATE_INFO};
-    strcpy(actionSetInfo.actionSetName, "gameplay");
-    strcpy(actionSetInfo.localizedActionSetName, "Gameplay");
+    strcpy(actionSetInfo.actionSetName, "dojo_combat");
+    strcpy(actionSetInfo.localizedActionSetName, "Dojo Combat");
 
-    xrCreateActionSet(m_xrInstance, &actionSetInfo, &m_actionSet);
+    XrResult result = xrCreateActionSet(m_xrInstance, &actionSetInfo, &m_actionSet);
+    if (XR_FAILED(result)) {
+        LOG_XR_RESULT(LOG_TAG_INPUT, result, "Create action set 'dojo_combat'");
+        return false;
+    }
+    LOG_INFO(LOG_TAG_INPUT) << "Created action set: dojo_combat";
 
     // Create hand paths
     xrStringToPath(m_xrInstance, "/user/hand/left", &m_handPaths[0]);
     xrStringToPath(m_xrInstance, "/user/hand/right", &m_handPaths[1]);
 
-    // Create pose action
+    // Create pose action for both hands
     XrActionCreateInfo actionInfo = {XR_TYPE_ACTION_CREATE_INFO};
     actionInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
     strcpy(actionInfo.actionName, "hand_pose");
     strcpy(actionInfo.localizedActionName, "Hand Pose");
     actionInfo.countSubactionPaths = 2;
     actionInfo.subactionPaths = m_handPaths;
-    xrCreateAction(m_actionSet, &actionInfo, &m_poseAction);
+    result = xrCreateAction(m_actionSet, &actionInfo, &m_poseAction);
+    LOG_INFO(LOG_TAG_INPUT) << "  Action: hand_pose (POSE) - LeftHand=blaster, RightHand=saber";
 
-    // Create trigger action
+    // Create trigger action (fire blaster / activate saber)
     actionInfo.actionType = XR_ACTION_TYPE_FLOAT_INPUT;
     strcpy(actionInfo.actionName, "trigger");
     strcpy(actionInfo.localizedActionName, "Trigger");
-    xrCreateAction(m_actionSet, &actionInfo, &m_triggerAction);
+    result = xrCreateAction(m_actionSet, &actionInfo, &m_triggerAction);
+    LOG_INFO(LOG_TAG_INPUT) << "  Action: trigger (FLOAT) - Left=fire blaster, Right=saber swing";
 
-    // Create grip action
+    // Create grip action (grip weapon)
     strcpy(actionInfo.actionName, "grip");
     strcpy(actionInfo.localizedActionName, "Grip");
-    xrCreateAction(m_actionSet, &actionInfo, &m_gripAction);
+    result = xrCreateAction(m_actionSet, &actionInfo, &m_gripAction);
+    LOG_INFO(LOG_TAG_INPUT) << "  Action: grip (FLOAT) - Weapon grip strength";
 
-    // Create haptic action
+    // Create haptic action (force feedback)
     actionInfo.actionType = XR_ACTION_TYPE_VIBRATION_OUTPUT;
     strcpy(actionInfo.actionName, "haptic");
     strcpy(actionInfo.localizedActionName, "Haptic");
-    xrCreateAction(m_actionSet, &actionInfo, &m_hapticAction);
+    result = xrCreateAction(m_actionSet, &actionInfo, &m_hapticAction);
+    LOG_INFO(LOG_TAG_INPUT) << "  Action: haptic (VIBRATION) - Impact feedback";
 
-    // Create hand spaces
+    // Create hand spaces for tracking
     for (int i = 0; i < 2; i++) {
         XrActionSpaceCreateInfo spaceInfo = {XR_TYPE_ACTION_SPACE_CREATE_INFO};
         spaceInfo.action = m_poseAction;
         spaceInfo.subactionPath = m_handPaths[i];
         spaceInfo.poseInActionSpace = {{0, 0, 0, 1}, {0, 0, 0}};
-        xrCreateActionSpace(m_xrSession, &spaceInfo, &m_handSpaces[i]);
+        result = xrCreateActionSpace(m_xrSession, &spaceInfo, &m_handSpaces[i]);
+        if (XR_FAILED(result)) {
+            LOG_WARN(LOG_TAG_INPUT) << "Failed to create hand space " << i;
+        }
     }
+    LOG_DEBUG(LOG_TAG_INPUT) << "Created hand spaces for pose tracking";
 
-    // Suggest bindings for common controllers
-    std::vector<XrActionSuggestedBinding> bindings;
+    // Helper to add bindings and log them
+    auto suggestProfileBindings = [&](const char* profilePath, const char* profileName) {
+        std::vector<XrActionSuggestedBinding> bindings;
 
-    auto addBinding = [&](XrAction action, const char* path) {
-        XrPath xrPath;
-        if (XR_SUCCEEDED(xrStringToPath(m_xrInstance, path, &xrPath))) {
-            bindings.push_back({action, xrPath});
+        auto addBinding = [&](XrAction action, const char* path, const char* desc) {
+            XrPath xrPath;
+            if (XR_SUCCEEDED(xrStringToPath(m_xrInstance, path, &xrPath))) {
+                bindings.push_back({action, xrPath});
+                LOG_TRACE(LOG_TAG_INPUT) << "    Binding: " << path << " -> " << desc;
+            }
+        };
+
+        LOG_INFO(LOG_TAG_INPUT) << "Suggesting bindings for: " << profileName;
+
+        // Pose bindings (grip pose for weapon handling)
+        addBinding(m_poseAction, "/user/hand/left/input/grip/pose", "LeftHandPose (blaster)");
+        addBinding(m_poseAction, "/user/hand/right/input/grip/pose", "RightHandPose (saber)");
+
+        // Trigger bindings
+        addBinding(m_triggerAction, "/user/hand/left/input/trigger/value", "LeftTrigger (fire)");
+        addBinding(m_triggerAction, "/user/hand/right/input/trigger/value", "RightTrigger (swing)");
+
+        // Grip bindings
+        addBinding(m_gripAction, "/user/hand/left/input/squeeze/value", "LeftGrip");
+        addBinding(m_gripAction, "/user/hand/right/input/squeeze/value", "RightGrip");
+
+        // Haptic bindings
+        addBinding(m_hapticAction, "/user/hand/left/output/haptic", "LeftHaptic");
+        addBinding(m_hapticAction, "/user/hand/right/output/haptic", "RightHaptic");
+
+        XrPath interactionProfile;
+        if (XR_FAILED(xrStringToPath(m_xrInstance, profilePath, &interactionProfile))) {
+            LOG_WARN(LOG_TAG_INPUT) << "  Profile path not found: " << profilePath;
+            return;
+        }
+
+        XrInteractionProfileSuggestedBinding suggestedBindings = {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+        suggestedBindings.interactionProfile = interactionProfile;
+        suggestedBindings.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
+        suggestedBindings.suggestedBindings = bindings.data();
+
+        result = xrSuggestInteractionProfileBindings(m_xrInstance, &suggestedBindings);
+        if (XR_SUCCEEDED(result)) {
+            LOG_INFO(LOG_TAG_INPUT) << "  Suggested " << bindings.size() << " bindings for " << profileName;
+        } else {
+            LOG_WARN(LOG_TAG_INPUT) << "  Failed to suggest bindings for " << profileName
+                                    << ": " << xrResultToString(result);
         }
     };
 
-    // Simple controller bindings
-    addBinding(m_poseAction, "/user/hand/left/input/grip/pose");
-    addBinding(m_poseAction, "/user/hand/right/input/grip/pose");
-    addBinding(m_triggerAction, "/user/hand/left/input/trigger/value");
-    addBinding(m_triggerAction, "/user/hand/right/input/trigger/value");
-    addBinding(m_gripAction, "/user/hand/left/input/squeeze/value");
-    addBinding(m_gripAction, "/user/hand/right/input/squeeze/value");
-    addBinding(m_hapticAction, "/user/hand/left/output/haptic");
-    addBinding(m_hapticAction, "/user/hand/right/output/haptic");
+    // Suggest bindings for multiple controller profiles
+    // Quest 3 / Quest 2 controllers (via Virtual Desktop / Link)
+    suggestProfileBindings("/interaction_profiles/oculus/touch_controller",
+                          "Oculus Touch (Quest 2/3)");
 
-    XrPath interactionProfile;
-    xrStringToPath(m_xrInstance, "/interaction_profiles/khr/simple_controller", &interactionProfile);
+    // Valve Index controllers
+    suggestProfileBindings("/interaction_profiles/valve/index_controller",
+                          "Valve Index");
 
-    XrInteractionProfileSuggestedBinding suggestedBindings = {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-    suggestedBindings.interactionProfile = interactionProfile;
-    suggestedBindings.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
-    suggestedBindings.suggestedBindings = bindings.data();
+    // Generic simple controller (fallback)
+    suggestProfileBindings("/interaction_profiles/khr/simple_controller",
+                          "Simple Controller (fallback)");
 
-    xrSuggestInteractionProfileBindings(m_xrInstance, &suggestedBindings);
-
-    // Attach action set
+    // Attach action set to session
     XrSessionActionSetsAttachInfo attachInfo = {XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
     attachInfo.countActionSets = 1;
     attachInfo.actionSets = &m_actionSet;
-    xrAttachSessionActionSets(m_xrSession, &attachInfo);
+    result = xrAttachSessionActionSets(m_xrSession, &attachInfo);
+    if (XR_FAILED(result)) {
+        LOG_XR_RESULT(LOG_TAG_INPUT, result, "Attach action sets");
+        return false;
+    }
+
+    LOG_INFO(LOG_TAG_INPUT) << "Input actions configured successfully";
+    LOG_INFO(LOG_TAG_INPUT) << "  Left hand: Blaster (trigger=fire, grip=hold)";
+    LOG_INFO(LOG_TAG_INPUT) << "  Right hand: Saber (trigger=swing, grip=hold)";
 
     return true;
 }
@@ -911,18 +967,32 @@ void Engine::syncActions() {
     syncInfo.countActiveActionSets = 1;
     syncInfo.activeActionSets = &activeSet;
 
-    xrSyncActions(m_xrSession, &syncInfo);
+    XrResult result = xrSyncActions(m_xrSession, &syncInfo);
+    if (XR_FAILED(result) && result != -26) {  // -26 = SESSION_NOT_FOCUSED is normal
+        LOG_DEBUG(LOG_TAG_INPUT) << "xrSyncActions: " << xrResultToString(result);
+    }
 
     // Get controller poses
     for (int i = 0; i < 2; i++) {
         ControllerState& controller = (i == 0) ? m_leftController : m_rightController;
+        int& lostFrames = (i == 0) ? m_leftHandLostFrames : m_rightHandLostFrames;
+        bool& warnedLost = (i == 0) ? m_leftHandWarnedLost : m_rightHandWarnedLost;
+        const char* handName = (i == 0) ? "LeftHand (blaster)" : "RightHand (saber)";
 
         XrSpaceLocation spaceLocation = {XR_TYPE_SPACE_LOCATION};
         xrLocateSpace(m_handSpaces[i], m_stageSpace, m_predictedDisplayTime, &spaceLocation);
 
+        bool wasTracked = controller.isTracked;
         controller.isTracked = (spaceLocation.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT) != 0;
 
         if (controller.isTracked) {
+            // Tracking recovered
+            if (warnedLost) {
+                LOG_INFO(LOG_TAG_INPUT) << handName << " tracking recovered after " << lostFrames << " frames";
+                warnedLost = false;
+            }
+            lostFrames = 0;
+
             controller.position = Vec3(
                 spaceLocation.pose.position.x,
                 spaceLocation.pose.position.y,
@@ -936,6 +1006,17 @@ void Engine::syncActions() {
             );
             controller.pose.position = controller.position;
             controller.pose.orientation = controller.orientation;
+        } else {
+            // Tracking lost
+            lostFrames++;
+            if (lostFrames == 1 && wasTracked) {
+                LOG_DEBUG(LOG_TAG_INPUT) << handName << " tracking lost";
+            }
+            if (lostFrames >= TRACKING_LOST_WARN_FRAMES && !warnedLost) {
+                LOG_WARN(LOG_TAG_INPUT) << handName << " not tracked for >" << TRACKING_LOST_WARN_FRAMES
+                                        << " frames (possible tracking/binding issue)";
+                warnedLost = true;
+            }
         }
 
         // Get trigger/grip values
@@ -945,7 +1026,15 @@ void Engine::syncActions() {
 
         getInfo.action = m_triggerAction;
         xrGetActionStateFloat(m_xrSession, &getInfo, &floatState);
+        float prevTrigger = controller.triggerValue;
         controller.triggerValue = floatState.currentState;
+
+        // Log first trigger activation
+        bool& triggerBoundLogged = (i == 0) ? m_leftTriggerBoundLogged : m_rightTriggerBoundLogged;
+        if (!triggerBoundLogged && floatState.isActive && controller.triggerValue > 0.1f) {
+            LOG_INFO(LOG_TAG_INPUT) << handName << " trigger bound and active (value=" << controller.triggerValue << ")";
+            triggerBoundLogged = true;
+        }
 
         getInfo.action = m_gripAction;
         xrGetActionStateFloat(m_xrSession, &getInfo, &floatState);

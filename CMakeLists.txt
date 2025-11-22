@@ -241,7 +241,6 @@ add_executable(movement_dojo_simple
     ${ENGINE_SOURCES}
     ${PHYSICS_SOURCES}
     ${ANALYTICS_SOURCES}
-    ${HAPTIC_SOURCES}
     ${PROGRESSION_SOURCES}
     src/core/Math.cpp
 )

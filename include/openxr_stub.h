@@ -152,6 +152,15 @@ struct XrActionStateFloat {
     int isActive;
 };
 
+struct XrActionStateBoolean {
+    int type;
+    void* next;
+    int currentState;
+    int changedSinceLastSync;
+    XrTime lastChangeTime;
+    int isActive;
+};
+
 struct XrActionStateGetInfo {
     int type;
     void* next;
@@ -189,6 +198,208 @@ struct XrCompositionLayerProjectionView {
     XrSwapchainSubImage subImage;
 };
 
+// Action binding structures (for input configuration)
+struct XrActionSuggestedBinding {
+    XrAction action;
+    XrPath binding;
+};
+
+struct XrInteractionProfileSuggestedBinding {
+    int type;
+    void* next;
+    XrPath interactionProfile;
+    uint32_t countSuggestedBindings;
+    const XrActionSuggestedBinding* suggestedBindings;
+};
+
+struct XrSessionActionSetsAttachInfo {
+    int type;
+    void* next;
+    uint32_t countActionSets;
+    const XrActionSet* actionSets;
+};
+
+// Event structures
+struct XrEventDataBuffer {
+    int type;
+    void* next;
+    uint8_t varying[4000];
+};
+
+struct XrEventDataSessionStateChanged {
+    int type;
+    void* next;
+    XrSession session;
+    XrSessionState state;
+    XrTime time;
+};
+
+// Session begin info
+struct XrSessionBeginInfo {
+    int type;
+    void* next;
+    int primaryViewConfigurationType;
+};
+
+// Haptic feedback structures
+struct XrHapticActionInfo {
+    int type;
+    void* next;
+    XrAction action;
+    XrPath subactionPath;
+};
+
+struct XrHapticVibration {
+    int type;
+    void* next;
+    XrDuration duration;
+    float frequency;
+    float amplitude;
+};
+
+// Haptic base header for polymorphic haptic types
+struct XrHapticBaseHeader {
+    int type;
+    void* next;
+};
+
+// Extension properties
+struct XrExtensionProperties {
+    int type;
+    void* next;
+    char extensionName[128];
+    uint32_t extensionVersion;
+};
+
+// System properties
+struct XrSystemProperties {
+    int type;
+    void* next;
+    XrSystemId systemId;
+    uint32_t vendorId;
+    char systemName[256];
+    struct {
+        uint32_t maxSwapchainImageHeight;
+        uint32_t maxSwapchainImageWidth;
+        uint32_t maxLayerCount;
+    } graphicsProperties;
+    struct {
+        int orientationTracking;
+        int positionTracking;
+    } trackingProperties;
+};
+
+// Instance and system creation
+struct XrApplicationInfo {
+    char applicationName[128];
+    uint32_t applicationVersion;
+    char engineName[128];
+    uint32_t engineVersion;
+    uint32_t apiVersion;
+};
+
+struct XrInstanceCreateInfo {
+    int type;
+    void* next;
+    uint64_t createFlags;
+    XrApplicationInfo applicationInfo;
+    uint32_t enabledApiLayerCount;
+    const char* const* enabledApiLayerNames;
+    uint32_t enabledExtensionCount;
+    const char* const* enabledExtensionNames;
+};
+
+struct XrSystemGetInfo {
+    int type;
+    void* next;
+    int formFactor;
+};
+
+// Session creation
+struct XrSessionCreateInfo {
+    int type;
+    void* next;
+    uint64_t createFlags;
+    XrSystemId systemId;
+};
+
+// Space creation
+struct XrReferenceSpaceCreateInfo {
+    int type;
+    void* next;
+    int referenceSpaceType;
+    XrPosef poseInReferenceSpace;
+};
+
+// Swapchain creation
+struct XrSwapchainCreateInfo {
+    int type;
+    void* next;
+    uint64_t createFlags;
+    uint64_t usageFlags;
+    int64_t format;
+    uint32_t sampleCount;
+    uint32_t width;
+    uint32_t height;
+    uint32_t faceCount;
+    uint32_t arraySize;
+    uint32_t mipCount;
+};
+
+// Action creation
+struct XrActionSetCreateInfo {
+    int type;
+    void* next;
+    char actionSetName[64];
+    char localizedActionSetName[128];
+    uint32_t priority;
+};
+
+struct XrActionCreateInfo {
+    int type;
+    void* next;
+    char actionName[64];
+    int actionType;
+    uint32_t countSubactionPaths;
+    const XrPath* subactionPaths;
+    char localizedActionName[128];
+};
+
+struct XrActionSpaceCreateInfo {
+    int type;
+    void* next;
+    XrAction action;
+    XrPath subactionPath;
+    XrPosef poseInActionSpace;
+};
+
+// Frame end info
+struct XrCompositionLayerBaseHeader {
+    int type;
+    void* next;
+    uint64_t layerFlags;
+    XrSpace space;
+};
+
+struct XrFrameEndInfo {
+    int type;
+    void* next;
+    XrTime displayTime;
+    int environmentBlendMode;
+    uint32_t layerCount;
+    const XrCompositionLayerBaseHeader* const* layers;
+};
+
+// Composition layer projection
+struct XrCompositionLayerProjection {
+    int type;
+    void* next;
+    uint64_t layerFlags;
+    XrSpace space;
+    uint32_t viewCount;
+    const XrCompositionLayerProjectionView* views;
+};
+
 // Stub function declarations (do nothing in headless mode)
 inline XrResult xrCreateInstance(void*, XrInstance*) { return -1; }
 inline XrResult xrDestroyInstance(XrInstance) { return 0; }
@@ -212,6 +423,7 @@ inline XrResult xrSuggestInteractionProfileBindings(XrInstance, void*) { return 
 inline XrResult xrAttachSessionActionSets(XrSession, void*) { return -1; }
 inline XrResult xrSyncActions(XrSession, void*) { return -1; }
 inline XrResult xrGetActionStateFloat(XrSession, void*, void*) { return -1; }
+inline XrResult xrGetActionStateBoolean(XrSession, void*, void*) { return -1; }
 inline XrResult xrLocateSpace(XrSpace, XrSpace, XrTime, void*) { return -1; }
 inline XrResult xrLocateViews(XrSession, void*, void*, uint32_t, uint32_t*, XrView*) { return -1; }
 inline XrResult xrWaitFrame(XrSession, void*, XrFrameState*) { return -1; }
@@ -242,13 +454,15 @@ inline XrResult xrEnumerateViewConfigurationViews(XrInstance, XrSystemId, int, u
 #define XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO 0
 #define XR_TYPE_ACTIONS_SYNC_INFO 0
 #define XR_TYPE_ACTION_STATE_FLOAT 0
+#define XR_TYPE_ACTION_STATE_BOOLEAN 0
 #define XR_TYPE_SPACE_LOCATION 0
 #define XR_TYPE_VIEW_LOCATE_INFO 0
 #define XR_TYPE_VIEW_STATE 0
 #define XR_TYPE_FRAME_END_INFO 0
 #define XR_TYPE_SESSION_BEGIN_INFO 0
 #define XR_TYPE_EVENT_DATA_BUFFER 0
-#define XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED 0
+#define XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED 1
+#define XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING 2
 #define XR_TYPE_HAPTIC_VIBRATION 0
 #define XR_TYPE_HAPTIC_ACTION_INFO 0
 #define XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO 0
