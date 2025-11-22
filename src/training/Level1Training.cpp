@@ -20,8 +20,30 @@ Level1TrainingSystem::Level1TrainingSystem() {
 // =============================================================================
 
 bool Level1TrainingSystem::onAttach(Engine* engine) {
+    // =========================================================================
+    // Defensive Check: Engine must be valid
+    // =========================================================================
+    if (!engine) {
+        LOG_ERROR(LOG_TAG_LEVEL1) << "Level 1 aborted: Engine pointer is null. Check configuration/assets/XR runtime.";
+        return false;
+    }
+
     m_engine = engine;
     LOG_INFO(LOG_TAG_LEVEL1) << "Level 1 Training System attached";
+
+    // =========================================================================
+    // Defensive Check: Verify essential engine capabilities
+    // =========================================================================
+    LOG_DEBUG(LOG_TAG_LEVEL1) << "Verifying engine capabilities...";
+
+    // Log headless/mock status for debugging
+    if (engine->isHeadless()) {
+        LOG_INFO(LOG_TAG_LEVEL1) << "  Running in headless mode - visual rendering disabled";
+    }
+    if (engine->isMockTracking()) {
+        LOG_INFO(LOG_TAG_LEVEL1) << "  Using mock tracking data - no real controller input";
+    }
+
     LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
     LOG_INFO(LOG_TAG_LEVEL1) << "DOJO LEVEL 1 - Basic Training";
     LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
@@ -29,10 +51,24 @@ bool Level1TrainingSystem::onAttach(Engine* engine) {
     LOG_INFO(LOG_TAG_LEVEL1) << "Phases: INTRO -> SABER -> BLASTER -> MIXED -> SUMMARY";
     LOG_INFO(LOG_TAG_LEVEL1) << "";
 
-    // Setup the dojo environment
+    // =========================================================================
+    // Setup Dojo Environment (graceful handling if assets missing)
+    // =========================================================================
+    LOG_DEBUG(LOG_TAG_LEVEL1) << "Setting up dojo environment...";
+
+    // These functions are designed to handle missing/disabled subsystems gracefully
     setupDojoEnvironment();
     setupWeapons();
 
+    // Verify setup completed (soft check - level can run without some assets)
+    if (!m_environmentSetup) {
+        LOG_WARN(LOG_TAG_LEVEL1) << "Dojo environment setup incomplete - some visuals may be missing";
+    }
+    if (!m_weaponsSetup) {
+        LOG_WARN(LOG_TAG_LEVEL1) << "Weapons setup incomplete - weapon visuals may be missing";
+    }
+
+    LOG_INFO(LOG_TAG_LEVEL1) << "Level 1 Training System ready";
     return true;
 }
 

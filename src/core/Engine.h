@@ -214,6 +214,8 @@ public:
 
     bool isXRReady() const { return m_xrReady; }
     bool isOverlayMode() const { return m_overlayActive; }
+    bool isHeadless() const { return m_config.headlessMode; }
+    bool isMockTracking() const { return m_config.mockTracking; }
 
     XrInstance getXRInstance() const { return m_xrInstance; }
     XrSession getXRSession() const { return m_xrSession; }

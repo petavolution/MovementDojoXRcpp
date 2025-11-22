@@ -53,6 +53,61 @@
  *   Expected: Runs 100 frames with mock tracking, exits cleanly.
  *
  * =============================================================================
+ * LEVEL 1 TEST RITUAL - Dojo Training Mode
+ * =============================================================================
+ *
+ * Level 1 is a gentle, chilled training experience designed to demonstrate:
+ * - Saber basics (blocking + striking)
+ * - Blaster basics (aiming + shooting)
+ * - Simple drone encounters
+ *
+ * Procedure:
+ *
+ * Step 1: Verify VR Readiness (do this once per session)
+ *   $ ./bin/movement_dojo_simple --vr-diagnostics -v
+ *   Expected: "VR Diagnostics: PASS"
+ *
+ * Step 2: (Optional) Visual sanity check
+ *   $ ./bin/movement_dojo_simple --vr-smoke-test -v
+ *   Expected: See dojo scene with weapons and drone
+ *
+ * Step 3: Run Level 1 Training (VR mode)
+ *   $ ./bin/movement_dojo_simple --dojo-level1 -v
+ *
+ *   Expected gameplay:
+ *     - INTRO (10s): Welcome, see your weapons
+ *     - SABER_DRILL (45s): Block slow projectiles with saber
+ *     - BLASTER_DRILL (45s): Shoot stationary/slow drones
+ *     - MIXED_DRILL (60s): Combined combat with dive attack at ~30s
+ *     - SUMMARY (10s): See your score and grade
+ *
+ *   Expected logs:
+ *     - "Pre-flight checks: PASS"
+ *     - State transitions logged clearly
+ *     - Projectile blocked/missed counts
+ *     - Final summary with OVERALL SCORE and GRADE
+ *
+ *   Success criteria:
+ *     - Smooth transitions through all 5 states
+ *     - No crashes or hard errors
+ *     - Dive attack clearly telegraphed (drone shakes/glows red)
+ *     - Summary shows performance grade
+ *
+ * Step 4: (Optional) Headless Level 1 Test
+ *   $ ./bin/movement_dojo_simple --dojo-level1 --headless --mock -v
+ *
+ *   Expected: Runs full level with mock tracking, outputs summary, exits cleanly.
+ *   Note: Score will be 0% since mock tracking doesn't simulate blocking/shooting.
+ *
+ * Troubleshooting:
+ *   - "Level 1 aborted: Engine initialization failed"
+ *     -> Run --vr-diagnostics first
+ *   - "Level 1 aborted: XR session not ready"
+ *     -> Check HMD is awake and SteamVR is running
+ *   - Level completes but low score
+ *     -> Normal for mock mode; requires real VR input
+ *
+ * =============================================================================
  */
 
 #include "core/Engine.h"
@@ -409,6 +464,9 @@ int RunVrSmokeTest(const std::string& logPath) {
 // Level 1 Training Mode
 // =============================================================================
 
+// Log tag for Level 1 launcher
+#define LOG_TAG_LEVEL1 "Level1"
+
 /**
  * RunLevel1Training - Dojo Level 1 Training Experience
  *
@@ -420,14 +478,21 @@ int RunVrSmokeTest(const std::string& logPath) {
  * Flow: INTRO -> SABER_DRILL -> BLASTER_DRILL -> MIXED_DRILL -> SUMMARY
  * Duration: ~3 minutes
  *
+ * Pre-flight checks:
+ * - Engine initialization (OpenXR or headless)
+ * - XR session validity (for VR mode)
+ * - Basic input availability
+ *
  * Returns 0 on completion, 1 on failure
  */
 int RunLevel1Training(const std::string& logPath, bool headless, bool mock) {
-    LOG_INFO(LOG_TAG_ENGINE) << "========================================";
-    LOG_INFO(LOG_TAG_ENGINE) << "DOJO LEVEL 1 - Basic Training";
-    LOG_INFO(LOG_TAG_ENGINE) << "========================================";
-    LOG_INFO(LOG_TAG_ENGINE) << "A gentle introduction to dojo combat";
-    LOG_INFO(LOG_TAG_ENGINE) << "";
+    LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
+    LOG_INFO(LOG_TAG_LEVEL1) << "DOJO LEVEL 1 - Basic Training";
+    LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
+    LOG_INFO(LOG_TAG_LEVEL1) << "Starting Level 1 dojo experience (chilled training mode).";
+    LOG_INFO(LOG_TAG_LEVEL1) << "";
+
+    std::string failReason;
 
     // Create engine
     Engine engine;
@@ -438,16 +503,78 @@ int RunLevel1Training(const std::string& logPath, bool headless, bool mock) {
     config.headlessMode = headless;
     config.mockTracking = mock;
 
+    // =========================================================================
+    // Pre-flight Check 1: Mode and Configuration
+    // =========================================================================
+    LOG_INFO(LOG_TAG_LEVEL1) << "Pre-flight checks:";
+
     if (headless) {
-        LOG_INFO(LOG_TAG_ENGINE) << "Running in headless mode" << (mock ? " with mock tracking" : "");
+        LOG_INFO(LOG_TAG_LEVEL1) << "  [1/3] Mode: Headless" << (mock ? " + Mock tracking" : "");
     } else {
-        LOG_INFO(LOG_TAG_ENGINE) << "Initializing VR...";
+        LOG_INFO(LOG_TAG_LEVEL1) << "  [1/3] Mode: VR (OpenXR)";
+        LOG_INFO(LOG_TAG_LEVEL1) << "        Requires: SteamVR + HMD + Controllers";
     }
 
+    // =========================================================================
+    // Pre-flight Check 2: Engine Initialization
+    // =========================================================================
+    LOG_INFO(LOG_TAG_LEVEL1) << "  [2/3] Initializing engine...";
+
     if (!engine.initialize(config)) {
-        LOG_ERROR(LOG_TAG_ENGINE) << "Failed to initialize engine";
-        LOG_ERROR(LOG_TAG_ENGINE) << "Check: (1) SteamVR running, (2) HMD connected, (3) Virtual Desktop streaming";
-        std::cout << "\nLevel 1 Training: FAIL - Could not initialize\n";
+        failReason = "Engine initialization failed";
+        LOG_ERROR(LOG_TAG_LEVEL1) << "Level 1 aborted: " << failReason << ". Check configuration/assets/XR runtime.";
+        if (!headless) {
+            LOG_ERROR(LOG_TAG_LEVEL1) << "Troubleshooting:";
+            LOG_ERROR(LOG_TAG_LEVEL1) << "  1. Is SteamVR running?";
+            LOG_ERROR(LOG_TAG_LEVEL1) << "  2. Is the HMD connected and detected?";
+            LOG_ERROR(LOG_TAG_LEVEL1) << "  3. Is Virtual Desktop streaming active?";
+            LOG_ERROR(LOG_TAG_LEVEL1) << "  Tip: Run --vr-diagnostics first to verify VR readiness.";
+        }
+        std::cout << "\nLevel 1 Training: FAIL - " << failReason << "\n";
+        std::cout << "See log at: " << logPath << "\n";
+        engine.shutdown();
+        Logger::flush();
+        Logger::shutdown();
+        return 1;
+    }
+    LOG_INFO(LOG_TAG_LEVEL1) << "        Engine initialized OK";
+
+    // =========================================================================
+    // Pre-flight Check 3: XR Readiness (for VR mode)
+    // =========================================================================
+    if (!headless) {
+        LOG_INFO(LOG_TAG_LEVEL1) << "  [3/3] Checking XR session...";
+        if (!engine.isXRReady()) {
+            failReason = "XR session not ready";
+            LOG_ERROR(LOG_TAG_LEVEL1) << "Level 1 aborted: " << failReason << ". Check configuration/assets/XR runtime.";
+            LOG_ERROR(LOG_TAG_LEVEL1) << "The HMD may be disconnected or in sleep mode.";
+            LOG_ERROR(LOG_TAG_LEVEL1) << "Tip: Run --vr-diagnostics to verify VR readiness.";
+            std::cout << "\nLevel 1 Training: FAIL - " << failReason << "\n";
+            std::cout << "See log at: " << logPath << "\n";
+            engine.shutdown();
+            Logger::flush();
+            Logger::shutdown();
+            return 1;
+        }
+        LOG_INFO(LOG_TAG_LEVEL1) << "        XR session OK";
+    } else {
+        LOG_INFO(LOG_TAG_LEVEL1) << "  [3/3] XR check: Skipped (headless mode)";
+    }
+
+    LOG_INFO(LOG_TAG_LEVEL1) << "";
+    LOG_INFO(LOG_TAG_LEVEL1) << "Pre-flight checks: PASS";
+    LOG_INFO(LOG_TAG_LEVEL1) << "";
+
+    // =========================================================================
+    // Load Level 1 Training System
+    // =========================================================================
+    LOG_INFO(LOG_TAG_LEVEL1) << "Loading Level 1 Training System...";
+
+    // addSystem returns bool; if it fails we should handle gracefully
+    if (!engine.addSystem<Level1TrainingSystem>()) {
+        failReason = "Failed to load Level 1 Training System";
+        LOG_ERROR(LOG_TAG_LEVEL1) << "Level 1 aborted: " << failReason << ". Check configuration/assets/XR runtime.";
+        std::cout << "\nLevel 1 Training: FAIL - " << failReason << "\n";
         std::cout << "See log at: " << logPath << "\n";
         engine.shutdown();
         Logger::flush();
@@ -455,20 +582,24 @@ int RunLevel1Training(const std::string& logPath, bool headless, bool mock) {
         return 1;
     }
 
-    // Add the Level 1 Training System
-    LOG_INFO(LOG_TAG_ENGINE) << "Loading Level 1 Training System...";
-    engine.addSystem<Level1TrainingSystem>();
+    LOG_INFO(LOG_TAG_LEVEL1) << "Level 1 Training System loaded successfully";
+    LOG_INFO(LOG_TAG_LEVEL1) << "";
 
-    LOG_INFO(LOG_TAG_ENGINE) << "Starting Level 1 session...";
-    LOG_INFO(LOG_TAG_ENGINE) << "Press Ctrl+C to exit at any time";
-    LOG_INFO(LOG_TAG_ENGINE) << "";
+    // =========================================================================
+    // Start Level 1 Session
+    // =========================================================================
+    LOG_INFO(LOG_TAG_LEVEL1) << "Starting Level 1 session...";
+    LOG_INFO(LOG_TAG_LEVEL1) << "Press Ctrl+C to exit at any time";
+    LOG_INFO(LOG_TAG_LEVEL1) << "";
 
     engine.startSession();
     engine.run();
     engine.endSession();
     engine.shutdown();
 
-    LOG_INFO(LOG_TAG_ENGINE) << "Level 1 Training session ended (logs flushed)";
+    LOG_INFO(LOG_TAG_LEVEL1) << "";
+    LOG_INFO(LOG_TAG_LEVEL1) << "Level 1 completed successfully.";
+    LOG_INFO(LOG_TAG_LEVEL1) << "Session ended (logs flushed)";
     std::cout << "\nLevel 1 Training: Completed\n";
 
     Logger::flush();
@@ -696,7 +827,8 @@ int main(int argc, char* argv[]) {
                       << "Options:\n"
                       << "  --vr-diagnostics    Run VR readiness check and exit\n"
                       << "  --vr-smoke-test     Run visual VR test with dojo scene\n"
-                      << "  --level1            Run Level 1 Training (tutorial)\n"
+                      << "  --level1, --dojo-level1\n"
+                      << "                      Run Level 1 Training (chilled tutorial)\n"
                       << "  --overlay           Run as VR overlay\n"
                       << "  --headless          Run without VR hardware (CLI testing)\n"
                       << "  --mock              Generate mock tracking data (with --headless)\n"
@@ -712,7 +844,7 @@ int main(int argc, char* argv[]) {
             vrDiagnostics = true;
         } else if (strcmp(argv[i], "--vr-smoke-test") == 0) {
             vrSmokeTest = true;
-        } else if (strcmp(argv[i], "--level1") == 0) {
+        } else if (strcmp(argv[i], "--level1") == 0 || strcmp(argv[i], "--dojo-level1") == 0) {
             level1Training = true;
         } else if (strcmp(argv[i], "--overlay") == 0) {
             overlayMode = true;
