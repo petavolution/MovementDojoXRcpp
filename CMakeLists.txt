@@ -245,6 +245,7 @@ add_executable(movement_dojo_simple
     src/core/Math.cpp
     src/training/Level1Training.cpp
     src/procedural/ProceduralMeshUtils.cpp
+    src/environments/Environment.cpp
 )
 
 target_link_libraries(movement_dojo_simple
