@@ -113,6 +113,8 @@
 #include "core/Engine.h"
 #include "core/Logger.h"
 #include "training/Level1Training.h"
+#include "training/TrainingSequenceController.h"
+#include "training/sequences/Level1SequenceConfig.h"
 #include "environments/Environment.h"
 #include <iostream>
 #include <csignal>
@@ -831,6 +833,188 @@ int RunVrDiagnostics(const std::string& logPath) {
 }
 
 // =============================================================================
+// Training Sequence Mode (New Data-Driven System)
+// =============================================================================
+
+#define LOG_TAG_SEQMODE "SeqMode"
+
+/**
+ * RunTrainingSequence - Run a data-driven training sequence
+ *
+ * Uses the new TrainingSequenceController system to execute training:
+ * - Loads sequence configuration by ID
+ * - Steps through phases and waves automatically
+ * - Logs all transitions for debugging
+ *
+ * @param sequenceId  ID of the sequence to run (e.g., "level1_fundamentals")
+ * @param logPath     Path to log file
+ * @param headless    Run without VR hardware
+ * @param mock        Generate mock tracking data
+ * @param envType     Training environment to load
+ *
+ * Returns 0 on completion, 1 on failure
+ */
+int RunTrainingSequence(const std::string& sequenceId, const std::string& logPath,
+                        bool headless, bool mock, EnvironmentType envType) {
+    LOG_INFO(LOG_TAG_SEQMODE) << "========================================";
+    LOG_INFO(LOG_TAG_SEQMODE) << "TRAINING SEQUENCE MODE";
+    LOG_INFO(LOG_TAG_SEQMODE) << "========================================";
+    LOG_INFO(LOG_TAG_SEQMODE) << "Sequence ID: " << sequenceId;
+    LOG_INFO(LOG_TAG_SEQMODE) << "Environment: " << environmentTypeToString(envType);
+    LOG_INFO(LOG_TAG_SEQMODE) << "";
+
+    // Check if sequence exists
+    if (!sequences::SequenceRegistry::hasSequence(sequenceId)) {
+        LOG_ERROR(LOG_TAG_SEQMODE) << "Unknown sequence ID: " << sequenceId;
+        LOG_INFO(LOG_TAG_SEQMODE) << "Available sequences:";
+        for (const auto& id : sequences::SequenceRegistry::getAvailableSequences()) {
+            LOG_INFO(LOG_TAG_SEQMODE) << "  - " << id;
+        }
+        std::cout << "\nTraining Sequence: FAIL - Unknown sequence ID\n";
+        Logger::flush();
+        Logger::shutdown();
+        return 1;
+    }
+
+    // Get sequence configuration
+    auto sequenceConfig = sequences::SequenceRegistry::getSequence(sequenceId);
+    LOG_INFO(LOG_TAG_SEQMODE) << "Loaded sequence: " << sequenceConfig.name;
+
+    // Create engine
+    Engine engine;
+    g_engine = &engine;
+
+    EngineConfig config;
+    config.appName = "Training: " + sequenceConfig.name;
+    config.headlessMode = headless;
+    config.mockTracking = mock;
+
+    // Initialize engine
+    LOG_INFO(LOG_TAG_SEQMODE) << "Initializing engine...";
+    if (!engine.initialize(config)) {
+        LOG_ERROR(LOG_TAG_SEQMODE) << "Engine initialization failed";
+        std::cout << "\nTraining Sequence: FAIL - Engine init failed\n";
+        std::cout << "See log at: " << logPath << "\n";
+        engine.shutdown();
+        Logger::flush();
+        Logger::shutdown();
+        return 1;
+    }
+
+    // Load environment
+    LOG_INFO(LOG_TAG_SEQMODE) << "Loading environment...";
+    if (!engine.loadEnvironment(envType)) {
+        LOG_WARN(LOG_TAG_SEQMODE) << "Failed to load environment, trying fallback...";
+        if (!engine.loadEnvironment(EnvironmentType::DOJO)) {
+            LOG_WARN(LOG_TAG_SEQMODE) << "Fallback also failed, continuing without environment";
+        }
+    }
+
+    // Create and configure the sequence controller
+    LOG_INFO(LOG_TAG_SEQMODE) << "Creating sequence controller...";
+    auto* controller = engine.addSystem<TrainingSequenceController>();
+    if (!controller) {
+        LOG_ERROR(LOG_TAG_SEQMODE) << "Failed to create TrainingSequenceController";
+        std::cout << "\nTraining Sequence: FAIL - Controller creation failed\n";
+        engine.shutdown();
+        Logger::flush();
+        Logger::shutdown();
+        return 1;
+    }
+
+    // Set up callbacks for logging/feedback
+    controller->setOnPhaseStart([](const TrainingPhaseConfig& phase) {
+        LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Phase started: " << phase.name;
+    });
+
+    controller->setOnPhaseEnd([](const TrainingPhaseConfig& phase, const PhaseResult& result) {
+        LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Phase ended: " << phase.name
+                                   << " (duration=" << result.duration << "s)";
+    });
+
+    controller->setOnWaveStart([](const TrainingWaveConfig& wave) {
+        LOG_DEBUG(LOG_TAG_SEQMODE) << "[CALLBACK] Wave started: " << wave.name
+                                    << " (enemies=" << wave.getTotalEnemyCount() << ")";
+    });
+
+    controller->setOnWaveEnd([](const TrainingWaveConfig& wave, const WaveResult& result) {
+        LOG_DEBUG(LOG_TAG_SEQMODE) << "[CALLBACK] Wave ended: " << wave.name
+                                    << " (" << waveResultTypeToString(result.type) << ")";
+    });
+
+    controller->setOnWaveSpawn([](const TrainingWaveConfig& wave, const EnemySpawnDef& spawn) {
+        LOG_DEBUG(LOG_TAG_SEQMODE) << "[CALLBACK] Spawn requested: "
+                                    << spawn.count << "x " << enemyTypeToString(spawn.type)
+                                    << " (" << enemyBehaviorToString(spawn.behavior) << ")";
+        // NOTE: Actual spawning would be connected here to the enemy spawner system
+    });
+
+    controller->setOnPrompt([](const std::string& text, float duration) {
+        LOG_INFO(LOG_TAG_SEQMODE) << "[PROMPT] (" << duration << "s) " << text;
+    });
+
+    controller->setOnSequenceEnd([](const TrainingSequenceConfig& seq, const SequenceResult& result) {
+        LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Sequence complete: " << seq.name;
+        LOG_INFO(LOG_TAG_SEQMODE) << "  Result: " << (result.passed ? "PASSED" : "ENDED");
+        LOG_INFO(LOG_TAG_SEQMODE) << "  Duration: " << result.totalDuration << "s";
+        LOG_INFO(LOG_TAG_SEQMODE) << "  Score: " << result.scorePercentage << "%";
+    });
+
+    // Load and start the sequence
+    LOG_INFO(LOG_TAG_SEQMODE) << "Loading sequence configuration...";
+    if (!controller->loadSequence(sequenceConfig)) {
+        LOG_ERROR(LOG_TAG_SEQMODE) << "Failed to load sequence";
+        std::cout << "\nTraining Sequence: FAIL - Sequence load failed\n";
+        engine.shutdown();
+        Logger::flush();
+        Logger::shutdown();
+        return 1;
+    }
+
+    LOG_INFO(LOG_TAG_SEQMODE) << "Starting sequence...";
+    if (!controller->startSequence()) {
+        LOG_ERROR(LOG_TAG_SEQMODE) << "Failed to start sequence";
+        std::cout << "\nTraining Sequence: FAIL - Sequence start failed\n";
+        engine.shutdown();
+        Logger::flush();
+        Logger::shutdown();
+        return 1;
+    }
+
+    // Run the engine (controller updates automatically via System interface)
+    LOG_INFO(LOG_TAG_SEQMODE) << "";
+    LOG_INFO(LOG_TAG_SEQMODE) << "Sequence running... Press Ctrl+C to exit";
+    LOG_INFO(LOG_TAG_SEQMODE) << "";
+
+    engine.startSession();
+    engine.run();
+    engine.endSession();
+
+    // Get final results
+    const auto& result = controller->getSequenceResult();
+
+    // Cleanup
+    engine.shutdown();
+
+    // Print summary
+    LOG_INFO(LOG_TAG_SEQMODE) << "";
+    LOG_INFO(LOG_TAG_SEQMODE) << "========================================";
+    LOG_INFO(LOG_TAG_SEQMODE) << "SEQUENCE FINISHED";
+    LOG_INFO(LOG_TAG_SEQMODE) << "========================================";
+    LOG_INFO(LOG_TAG_SEQMODE) << "  Duration: " << result.totalDuration << "s";
+    LOG_INFO(LOG_TAG_SEQMODE) << "  Phases: " << result.phasesCompleted;
+    LOG_INFO(LOG_TAG_SEQMODE) << "  Waves: " << result.totalWavesCompleted << " completed, "
+                               << result.totalWavesFailed << " failed";
+
+    std::cout << "\nTraining Sequence: " << (result.passed ? "COMPLETED" : "ENDED") << "\n";
+    std::cout << "Duration: " << result.totalDuration << "s\n";
+
+    Logger::flush();
+    Logger::shutdown();
+    return 0;
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -842,6 +1026,8 @@ int main(int argc, char* argv[]) {
     bool vrDiagnostics = false;
     bool vrSmokeTest = false;
     bool level1Training = false;
+    bool trainingSequenceMode = false;
+    std::string trainingSequenceId;
     int maxFrames = 0;  // 0 = unlimited
     std::string scenePath;
     std::string logPath = "./logs/engine.log";
@@ -860,7 +1046,12 @@ int main(int argc, char* argv[]) {
                       << "  --vr-diagnostics    Run VR readiness check and exit\n"
                       << "  --vr-smoke-test     Run visual VR test with dojo scene\n"
                       << "  --level1, --dojo-level1\n"
-                      << "                      Run Level 1 Training (chilled tutorial)\n"
+                      << "                      Run Level 1 Training (old system)\n"
+                      << "  --training-sequence=<id>\n"
+                      << "                      Run training sequence (new data-driven system)\n"
+                      << "                      Available: level1, level1_fundamentals\n"
+                      << "  --training-sequence-level1\n"
+                      << "                      Shortcut for --training-sequence=level1_fundamentals\n"
                       << "  --env=<type>        Select training environment:\n"
                       << "                        ocean     - Ocean Platform (calm, meditative)\n"
                       << "                        dojo      - Kung-Fu Dojo (default)\n"
@@ -882,6 +1073,15 @@ int main(int argc, char* argv[]) {
             vrSmokeTest = true;
         } else if (strcmp(argv[i], "--level1") == 0 || strcmp(argv[i], "--dojo-level1") == 0) {
             level1Training = true;
+        } else if (strcmp(argv[i], "--training-sequence-level1") == 0) {
+            trainingSequenceMode = true;
+            trainingSequenceId = "level1_fundamentals";
+        } else if (strncmp(argv[i], "--training-sequence=", 20) == 0) {
+            trainingSequenceMode = true;
+            trainingSequenceId = argv[i] + 20;
+        } else if (strcmp(argv[i], "--training-sequence") == 0 && i + 1 < argc) {
+            trainingSequenceMode = true;
+            trainingSequenceId = argv[++i];
         } else if (strcmp(argv[i], "--overlay") == 0) {
             overlayMode = true;
         } else if (strcmp(argv[i], "--headless") == 0) {
@@ -936,9 +1136,14 @@ int main(int argc, char* argv[]) {
         return RunVrSmokeTest(logPath);
     }
 
-    // Handle Level 1 Training mode
+    // Handle Level 1 Training mode (legacy)
     if (level1Training) {
         return RunLevel1Training(logPath, headlessMode, mockTracking, envType);
+    }
+
+    // Handle Training Sequence mode (new data-driven system)
+    if (trainingSequenceMode) {
+        return RunTrainingSequence(trainingSequenceId, logPath, headlessMode, mockTracking, envType);
     }
 
     // Log startup
