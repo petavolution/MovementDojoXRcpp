@@ -57,6 +57,36 @@ inline const char* level1StateToString(Level1State state) {
 }
 
 /**
+ * Performance grade for summary
+ */
+enum class PerformanceGrade {
+    EXCELLENT,  // 80%+ accuracy
+    GOOD,       // 60-79% accuracy
+    LEARNING,   // 40-59% accuracy
+    KEEP_PRACTICING  // <40% accuracy
+};
+
+inline const char* gradeToString(PerformanceGrade grade) {
+    switch (grade) {
+        case PerformanceGrade::EXCELLENT:        return "EXCELLENT!";
+        case PerformanceGrade::GOOD:             return "Good work!";
+        case PerformanceGrade::LEARNING:         return "Keep learning!";
+        case PerformanceGrade::KEEP_PRACTICING:  return "Practice makes perfect!";
+        default:                                 return "Complete!";
+    }
+}
+
+inline const char* gradeToEmoji(PerformanceGrade grade) {
+    switch (grade) {
+        case PerformanceGrade::EXCELLENT:        return "***";
+        case PerformanceGrade::GOOD:             return "**";
+        case PerformanceGrade::LEARNING:         return "*";
+        case PerformanceGrade::KEEP_PRACTICING:  return "";
+        default:                                 return "";
+    }
+}
+
+/**
  * Level 1 Statistics
  */
 struct Level1Stats {
@@ -64,10 +94,12 @@ struct Level1Stats {
     int targetsMissed = 0;
     int projectilesBlocked = 0;
     int projectilesMissed = 0;
+    int projectilesFired = 0;  // Total projectiles fired at player
     int shotsHit = 0;
     int shotsFired = 0;
     int divesDodged = 0;
     int divesHit = 0;
+    int divesInitiated = 0;
 
     float totalTime = 0.0f;
     float introTime = 0.0f;
@@ -75,7 +107,7 @@ struct Level1Stats {
     float blasterDrillTime = 0.0f;
     float mixedDrillTime = 0.0f;
 
-    // Calculate accuracy percentages
+    // Calculate accuracy percentages (safe division)
     float getSaberAccuracy() const {
         int total = targetsHit + targetsMissed;
         return total > 0 ? (float)targetsHit / total * 100.0f : 0.0f;
@@ -88,6 +120,46 @@ struct Level1Stats {
 
     float getBlasterAccuracy() const {
         return shotsFired > 0 ? (float)shotsHit / shotsFired * 100.0f : 0.0f;
+    }
+
+    float getDiveAvoidRate() const {
+        int total = divesDodged + divesHit;
+        return total > 0 ? (float)divesDodged / total * 100.0f : 100.0f;
+    }
+
+    // Overall performance score (weighted average)
+    float getOverallScore() const {
+        float blockScore = getBlockAccuracy();
+        float blasterScore = getBlasterAccuracy();
+        float diveScore = getDiveAvoidRate();
+
+        // Weight: blocking 40%, shooting 40%, dodging 20%
+        int weights = 0;
+        float total = 0.0f;
+
+        if (projectilesBlocked + projectilesMissed > 0) {
+            total += blockScore * 0.4f;
+            weights += 40;
+        }
+        if (shotsFired > 0) {
+            total += blasterScore * 0.4f;
+            weights += 40;
+        }
+        if (divesInitiated > 0) {
+            total += diveScore * 0.2f;
+            weights += 20;
+        }
+
+        return weights > 0 ? total * 100.0f / weights : 50.0f;
+    }
+
+    // Get performance grade
+    PerformanceGrade getGrade() const {
+        float score = getOverallScore();
+        if (score >= 80.0f) return PerformanceGrade::EXCELLENT;
+        if (score >= 60.0f) return PerformanceGrade::GOOD;
+        if (score >= 40.0f) return PerformanceGrade::LEARNING;
+        return PerformanceGrade::KEEP_PRACTICING;
     }
 };
 
@@ -164,9 +236,17 @@ private:
     void renderDrillHUD(const FrameContext& ctx);
     void renderSummary(const FrameContext& ctx);
 
+    // Tutorial and feedback
+    void renderTutorialPrompt(const FrameContext& ctx);
+    void renderLiveStats(const FrameContext& ctx);
+    void showFeedbackMessage(const std::string& message, float duration = 2.0f);
+    const char* getCurrentTutorialText() const;
+    const char* getCurrentObjectiveText() const;
+
     // Logging
     void logStateTransition(Level1State from, Level1State to);
     void logLevelSummary();
+    void logStructuredSummary();  // Machine-readable summary
 
 private:
     Engine* m_engine = nullptr;
@@ -213,6 +293,14 @@ private:
     bool m_diveAttackTriggered = false;
     float m_diveAttackTimer = 0.0f;
     static constexpr float DIVE_ATTACK_TIME = 30.0f;  // Trigger dive at 30s into mixed drill
+
+    // Feedback messages
+    std::string m_feedbackMessage;
+    float m_feedbackTimer = 0.0f;
+    int m_lastBlockCount = 0;      // For "Nice block!" feedback
+    int m_lastHitCount = 0;        // For "Great shot!" feedback
+    float m_comboTimer = 0.0f;     // Track consecutive successes
+    int m_comboCount = 0;
 
     // Flags
     bool m_environmentSetup = false;

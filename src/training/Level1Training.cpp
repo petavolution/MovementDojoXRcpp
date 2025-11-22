@@ -69,11 +69,29 @@ void Level1TrainingSystem::onUpdate(const FrameContext& ctx) {
         return;
     }
 
+    float dt = static_cast<float>(ctx.deltaTime);
+
     // Track total level time
-    m_totalLevelTime += static_cast<float>(ctx.deltaTime);
+    m_totalLevelTime += dt;
+
+    // Update feedback timer
+    if (m_feedbackTimer > 0) {
+        m_feedbackTimer -= dt;
+        if (m_feedbackTimer <= 0) {
+            m_feedbackMessage.clear();
+        }
+    }
+
+    // Update combo timer (reset combo if too much time passes)
+    if (m_comboTimer > 0) {
+        m_comboTimer -= dt;
+        if (m_comboTimer <= 0) {
+            m_comboCount = 0;
+        }
+    }
 
     // Update current state
-    updateCurrentState(static_cast<float>(ctx.deltaTime));
+    updateCurrentState(dt);
 }
 
 void Level1TrainingSystem::onRender(const FrameContext& ctx) {
@@ -408,11 +426,13 @@ void Level1TrainingSystem::updateMixedDrill(float deltaTime) {
     if (!m_diveAttackTriggered && m_stateTimer >= DIVE_ATTACK_TIME) {
         m_diveAttackTriggered = true;
         LOG_INFO(LOG_TAG_LEVEL1) << ">>> DIVE ATTACK INCOMING! <<<";
+        showFeedbackMessage("WATCH OUT! Dive attack!");
 
         // Find or spawn the dive drone and trigger attack
         for (auto& drone : m_drones) {
             if (drone && drone->isAlive() && drone->getBehavior() == DroneBehavior::SLOW_DIVE) {
                 drone->startDiveAttack(playerPos);
+                m_stats.divesInitiated++;
                 break;
             }
         }
@@ -582,6 +602,9 @@ void Level1TrainingSystem::renderStateHUD(const FrameContext& ctx) {
         }
     }
 
+    // Draw tutorial prompt for all states
+    renderTutorialPrompt(ctx);
+
     // Draw state-specific overlays
     switch (m_currentState) {
         case Level1State::INTRO:
@@ -591,6 +614,7 @@ void Level1TrainingSystem::renderStateHUD(const FrameContext& ctx) {
         case Level1State::BLASTER_DRILL:
         case Level1State::MIXED_DRILL:
             renderDrillHUD(ctx);
+            renderLiveStats(ctx);
             break;
         case Level1State::SUMMARY:
             renderSummary(ctx);
@@ -633,19 +657,78 @@ void Level1TrainingSystem::renderDrillHUD(const FrameContext& ctx) {
 }
 
 void Level1TrainingSystem::renderSummary(const FrameContext& ctx) {
-    // Draw completion indicator
-    Vec3 centerPos = ctx.headPose.position + Vec3(0, 0, -2.0f);
+    if (!m_engine) return;
 
-    // Draw a celebratory "star" pattern
+    // Get grade info
+    PerformanceGrade grade = m_stats.getGrade();
+    float overallScore = m_stats.getOverallScore();
+
+    // Position summary in front of player
+    Vec3 centerPos = ctx.headPose.position + Vec3(0, 0.3f, -2.0f);
+
+    // Draw grade-colored background indicator
+    Color gradeColor;
+    switch (grade) {
+        case PerformanceGrade::EXCELLENT:
+            gradeColor = Color(1.0f, 0.85f, 0.0f);  // Gold
+            break;
+        case PerformanceGrade::GOOD:
+            gradeColor = Color(0.3f, 0.9f, 0.3f);  // Green
+            break;
+        case PerformanceGrade::LEARNING:
+            gradeColor = Color(0.3f, 0.7f, 1.0f);  // Blue
+            break;
+        default:
+            gradeColor = Color(0.7f, 0.7f, 0.7f);  // Gray
+            break;
+    }
+
+    // Draw a celebratory "star" pattern with grade color
     for (int i = 0; i < 8; i++) {
         float angle = i * 45.0f * 3.14159f / 180.0f;
         Vec3 dir(std::cos(angle), std::sin(angle), 0);
         m_engine->drawLine(
             centerPos,
-            centerPos + dir * 0.3f,
-            Color(1.0f, 0.8f, 0.2f), 3.0f  // Gold
+            centerPos + dir * 0.4f,
+            gradeColor, 4.0f
         );
     }
+
+    // Draw title
+    m_engine->drawText(centerPos + Vec3(0, 0.5f, 0), "LEVEL 1 COMPLETE!", Color::white());
+
+    // Draw grade
+    char gradeBuffer[64];
+    snprintf(gradeBuffer, sizeof(gradeBuffer), "%s %s", gradeToString(grade), gradeToEmoji(grade));
+    m_engine->drawText(centerPos + Vec3(0, 0.3f, 0), gradeBuffer, gradeColor);
+
+    // Draw overall score
+    char scoreBuffer[32];
+    snprintf(scoreBuffer, sizeof(scoreBuffer), "Score: %d%%", static_cast<int>(overallScore));
+    m_engine->drawText(centerPos + Vec3(0, 0.1f, 0), scoreBuffer, Color::white());
+
+    // Draw detailed stats
+    Vec3 statsPos = centerPos + Vec3(0, -0.15f, 0);
+    char statBuffer[64];
+
+    // Block accuracy
+    snprintf(statBuffer, sizeof(statBuffer), "Blocking: %.0f%%", m_stats.getBlockAccuracy());
+    m_engine->drawText(statsPos, statBuffer, Color(0.8f, 0.8f, 0.8f));
+
+    // Blaster accuracy
+    snprintf(statBuffer, sizeof(statBuffer), "Shooting: %.0f%%", m_stats.getBlasterAccuracy());
+    m_engine->drawText(statsPos + Vec3(0, -0.12f, 0), statBuffer, Color(0.8f, 0.8f, 0.8f));
+
+    // Dodging (if applicable)
+    if (m_stats.divesInitiated > 0) {
+        snprintf(statBuffer, sizeof(statBuffer), "Dodging: %.0f%%", m_stats.getDiveAvoidRate());
+        m_engine->drawText(statsPos + Vec3(0, -0.24f, 0), statBuffer, Color(0.8f, 0.8f, 0.8f));
+    }
+
+    // Draw total time
+    char timeBuffer[32];
+    snprintf(timeBuffer, sizeof(timeBuffer), "Time: %.1fs", m_stats.totalTime);
+    m_engine->drawText(statsPos + Vec3(0, -0.4f, 0), timeBuffer, Color(0.6f, 0.6f, 0.6f));
 }
 
 // =============================================================================
@@ -659,6 +742,11 @@ void Level1TrainingSystem::logStateTransition(Level1State from, Level1State to) 
 }
 
 void Level1TrainingSystem::logLevelSummary() {
+    // Calculate final stats
+    m_stats.totalTime = m_totalLevelTime;
+    PerformanceGrade grade = m_stats.getGrade();
+    float overallScore = m_stats.getOverallScore();
+
     LOG_INFO(LOG_TAG_LEVEL1) << "----------------------------------------";
     LOG_INFO(LOG_TAG_LEVEL1) << "LEVEL 1 SUMMARY";
     LOG_INFO(LOG_TAG_LEVEL1) << "----------------------------------------";
@@ -674,12 +762,20 @@ void Level1TrainingSystem::logLevelSummary() {
     LOG_INFO(LOG_TAG_LEVEL1) << "  Targets hit:      " << m_stats.targetsHit
                              << " (accuracy: " << m_stats.getSaberAccuracy() << "%)";
     LOG_INFO(LOG_TAG_LEVEL1) << "  Projectiles blocked: " << m_stats.projectilesBlocked
+                             << "/" << m_stats.projectilesFired
                              << " (accuracy: " << m_stats.getBlockAccuracy() << "%)";
     LOG_INFO(LOG_TAG_LEVEL1) << "  Shots hit:        " << m_stats.shotsHit << "/" << m_stats.shotsFired
                              << " (accuracy: " << m_stats.getBlasterAccuracy() << "%)";
     LOG_INFO(LOG_TAG_LEVEL1) << "  Dives dodged:     " << m_stats.divesDodged << "/"
                              << (m_stats.divesDodged + m_stats.divesHit);
-    LOG_INFO(LOG_TAG_LEVEL1) << "----------------------------------------";
+    LOG_INFO(LOG_TAG_LEVEL1) << "";
+    LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
+    LOG_INFO(LOG_TAG_LEVEL1) << "OVERALL SCORE: " << static_cast<int>(overallScore) << "%";
+    LOG_INFO(LOG_TAG_LEVEL1) << "GRADE: " << gradeToString(grade) << " " << gradeToEmoji(grade);
+    LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
+
+    // Output structured summary for analytics/parsing
+    logStructuredSummary();
 }
 
 // =============================================================================
@@ -777,9 +873,19 @@ void Level1TrainingSystem::updateProjectiles(float deltaTime, const Vec3& saberP
             if (projectile->wasBlocked()) {
                 m_stats.projectilesBlocked++;
                 LOG_DEBUG(LOG_TAG_LEVEL1) << "Projectile blocked! Total: " << m_stats.projectilesBlocked;
+
+                // Feedback for successful block
+                m_comboCount++;
+                m_comboTimer = 2.0f;
+                if (m_comboCount >= 3) {
+                    showFeedbackMessage("COMBO x" + std::to_string(m_comboCount) + "!", 1.5f);
+                } else {
+                    showFeedbackMessage("Nice block!", 1.0f);
+                }
             } else if (projectile->wasMissed()) {
                 m_stats.projectilesMissed++;
                 LOG_DEBUG(LOG_TAG_LEVEL1) << "Projectile missed! Total: " << m_stats.projectilesMissed;
+                m_comboCount = 0;  // Reset combo on miss
             }
         }
     }
@@ -824,8 +930,9 @@ void Level1TrainingSystem::fireProjectileFromDrone(Drone& drone, const Vec3& tar
 
     spawnProjectile(config);
     drone.resetFireTimer();
+    m_stats.projectilesFired++;
 
-    LOG_DEBUG(LOG_TAG_LEVEL1) << "Drone " << drone.getId() << " fired projectile";
+    LOG_DEBUG(LOG_TAG_LEVEL1) << "Drone " << drone.getId() << " fired projectile (total: " << m_stats.projectilesFired << ")";
 }
 
 void Level1TrainingSystem::checkBlasterHits(const Vec3& blasterPosition, const Vec3& blasterDirection) {
@@ -850,6 +957,15 @@ void Level1TrainingSystem::checkBlasterHits(const Vec3& blasterPosition, const V
             drone->takeDamage(1);
             m_stats.shotsHit++;
             m_stats.targetsHit++;
+
+            // Feedback for successful hit
+            m_comboCount++;
+            m_comboTimer = 2.0f;
+            if (m_comboCount >= 3) {
+                showFeedbackMessage("COMBO x" + std::to_string(m_comboCount) + "!", 1.5f);
+            } else {
+                showFeedbackMessage("Great shot!", 1.0f);
+            }
             return;  // One hit per shot
         }
     }
@@ -935,6 +1051,148 @@ void Level1TrainingSystem::spawnMixedDrillEntities() {
     spawnDrone(diver);
 
     LOG_INFO(LOG_TAG_LEVEL1) << "Mixed drill: " << m_drones.size() << " drones spawned (1 will dive at 30s)";
+}
+
+// =============================================================================
+// Tutorial and Feedback
+// =============================================================================
+
+const char* Level1TrainingSystem::getCurrentTutorialText() const {
+    switch (m_currentState) {
+        case Level1State::INTRO:
+            return "Welcome to the Dojo!\n\nLook at your hands:\n  RIGHT = Lightsaber (block & strike)\n  LEFT = Blaster (aim & shoot)";
+
+        case Level1State::SABER_DRILL:
+            return "SABER DRILL\n\nBlock the slow incoming shots\nwith your lightsaber!";
+
+        case Level1State::BLASTER_DRILL:
+            return "BLASTER DRILL\n\nAim with your left hand\nand shoot the drones!";
+
+        case Level1State::MIXED_DRILL:
+            return "MIXED COMBAT\n\nBlock shots + Shoot drones\nWatch for the dive attack!";
+
+        case Level1State::SUMMARY:
+            return "Training Complete!";
+
+        default:
+            return "";
+    }
+}
+
+const char* Level1TrainingSystem::getCurrentObjectiveText() const {
+    switch (m_currentState) {
+        case Level1State::INTRO:
+            return "Get ready...";
+
+        case Level1State::SABER_DRILL:
+            return "Block incoming projectiles";
+
+        case Level1State::BLASTER_DRILL:
+            return "Shoot the drones";
+
+        case Level1State::MIXED_DRILL:
+            return "Block + Shoot + Dodge";
+
+        case Level1State::SUMMARY:
+            return "Review your performance";
+
+        default:
+            return "";
+    }
+}
+
+void Level1TrainingSystem::showFeedbackMessage(const std::string& message, float duration) {
+    m_feedbackMessage = message;
+    m_feedbackTimer = duration;
+    LOG_DEBUG(LOG_TAG_LEVEL1) << "Feedback: " << message;
+}
+
+void Level1TrainingSystem::renderTutorialPrompt(const FrameContext& ctx) {
+    if (!m_engine) return;
+
+    // Position tutorial text above and in front of player
+    Vec3 textPos = ctx.headPose.position + Vec3(0, 0.5f, -2.0f);
+
+    // Draw tutorial text
+    const char* tutorial = getCurrentTutorialText();
+    if (tutorial && tutorial[0] != '\0') {
+        m_engine->drawText(textPos, tutorial, Color::white());
+    }
+
+    // Draw objective below
+    const char* objective = getCurrentObjectiveText();
+    if (objective && objective[0] != '\0') {
+        Vec3 objPos = textPos + Vec3(0, -0.3f, 0);
+        m_engine->drawText(objPos, objective, Color::cyan());
+    }
+}
+
+void Level1TrainingSystem::renderLiveStats(const FrameContext& ctx) {
+    if (!m_engine) return;
+
+    // Position stats in peripheral vision (upper right)
+    Vec3 statsPos = ctx.headPose.position + Vec3(0.7f, 0.4f, -1.5f);
+
+    // Format stats based on current drill
+    char buffer[128];
+    switch (m_currentState) {
+        case Level1State::SABER_DRILL: {
+            int total = m_stats.projectilesBlocked + m_stats.projectilesMissed;
+            snprintf(buffer, sizeof(buffer), "Blocked: %d/%d", m_stats.projectilesBlocked, total);
+            m_engine->drawText(statsPos, buffer, Color::green());
+            break;
+        }
+
+        case Level1State::BLASTER_DRILL: {
+            snprintf(buffer, sizeof(buffer), "Hits: %d/%d", m_stats.shotsHit, m_stats.shotsFired);
+            m_engine->drawText(statsPos, buffer, Color::green());
+            break;
+        }
+
+        case Level1State::MIXED_DRILL: {
+            snprintf(buffer, sizeof(buffer), "Blocked: %d  Hits: %d", m_stats.projectilesBlocked, m_stats.shotsHit);
+            m_engine->drawText(statsPos, buffer, Color::green());
+            break;
+        }
+
+        default:
+            break;
+    }
+
+    // Draw feedback message if active
+    if (m_feedbackTimer > 0 && !m_feedbackMessage.empty()) {
+        Vec3 feedbackPos = ctx.headPose.position + Vec3(0, 0.1f, -1.5f);
+        Color feedbackColor = Color(1.0f, 0.9f, 0.3f);  // Yellow
+        m_engine->drawText(feedbackPos, m_feedbackMessage, feedbackColor);
+    }
+
+    // Draw timer
+    float remaining = getStateTimeRemaining();
+    if (remaining > 0 && m_currentState != Level1State::INTRO && m_currentState != Level1State::SUMMARY) {
+        Vec3 timerPos = ctx.headPose.position + Vec3(-0.7f, 0.4f, -1.5f);
+        snprintf(buffer, sizeof(buffer), "Time: %.0fs", remaining);
+        m_engine->drawText(timerPos, buffer, Color(0.7f, 0.7f, 0.7f));
+    }
+}
+
+void Level1TrainingSystem::logStructuredSummary() {
+    // Machine-readable summary for analytics
+    LOG_INFO(LOG_TAG_LEVEL1) << "=== STRUCTURED SUMMARY (JSON-like) ===";
+    LOG_INFO(LOG_TAG_LEVEL1) << "level1_summary={"
+        << "\"total_time\":" << m_stats.totalTime
+        << ",\"projectiles_fired\":" << m_stats.projectilesFired
+        << ",\"projectiles_blocked\":" << m_stats.projectilesBlocked
+        << ",\"projectiles_missed\":" << m_stats.projectilesMissed
+        << ",\"block_accuracy\":" << m_stats.getBlockAccuracy()
+        << ",\"shots_fired\":" << m_stats.shotsFired
+        << ",\"shots_hit\":" << m_stats.shotsHit
+        << ",\"blaster_accuracy\":" << m_stats.getBlasterAccuracy()
+        << ",\"dives_initiated\":" << m_stats.divesInitiated
+        << ",\"dives_dodged\":" << m_stats.divesDodged
+        << ",\"dives_hit\":" << m_stats.divesHit
+        << ",\"overall_score\":" << m_stats.getOverallScore()
+        << ",\"grade\":\"" << gradeToString(m_stats.getGrade()) << "\""
+        << "}";
 }
 
 } // namespace lst
