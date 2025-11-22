@@ -11,6 +11,7 @@
 int runMathTests();
 int runUSDLoaderTests();
 int runSessionManagerTests();
+int runVisualizationTests();
 
 void printUsage(const char* program) {
     std::cout << "Usage: " << program << " [options]" << std::endl;
@@ -19,6 +20,7 @@ void printUsage(const char* program) {
     std::cout << "  --math      Run math tests only" << std::endl;
     std::cout << "  --usd       Run USD loader tests only" << std::endl;
     std::cout << "  --session   Run SessionManager tests only" << std::endl;
+    std::cout << "  --viz       Run visualization tests only" << std::endl;
     std::cout << "  --all       Run all tests (default)" << std::endl;
     std::cout << "  --help      Show this help" << std::endl;
 }
@@ -29,6 +31,7 @@ int main(int argc, char* argv[]) {
     bool runMath = false;
     bool runUSD = false;
     bool runSession = false;
+    bool runViz = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -42,6 +45,9 @@ int main(int argc, char* argv[]) {
             runAll = false;
         } else if (strcmp(argv[i], "--session") == 0) {
             runSession = true;
+            runAll = false;
+        } else if (strcmp(argv[i], "--viz") == 0) {
+            runViz = true;
             runAll = false;
         } else if (strcmp(argv[i], "--all") == 0) {
             runAll = true;
@@ -67,6 +73,11 @@ int main(int argc, char* argv[]) {
 
     if (runAll || runSession) {
         result |= runSessionManagerTests();
+        std::cout << std::endl;
+    }
+
+    if (runAll || runViz) {
+        result |= runVisualizationTests();
         std::cout << std::endl;
     }
 

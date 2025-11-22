@@ -17,6 +17,7 @@ set(TEST_SOURCES
     test_math.cpp
     test_usd_loader.cpp
     test_session_manager.cpp
+    test_visualization.cpp
 )
 
 # Source files needed by tests
@@ -29,6 +30,7 @@ set(TEST_SUPPORT_SOURCES
     ${CMAKE_SOURCE_DIR}/src/training/TrainingModule.cpp
     ${CMAKE_SOURCE_DIR}/src/training/FlowModes.cpp
     ${CMAKE_SOURCE_DIR}/src/usd/USDLoader.cpp
+    ${CMAKE_SOURCE_DIR}/src/visualization/MovementVisualizer.cpp
 )
 
 # Create test executable
@@ -60,10 +62,11 @@ target_include_directories(lightsaber_tests
 add_test(NAME MathTests COMMAND lightsaber_tests --math)
 add_test(NAME USDLoaderTests COMMAND lightsaber_tests --usd)
 add_test(NAME SessionManagerTests COMMAND lightsaber_tests --session)
+add_test(NAME VisualizationTests COMMAND lightsaber_tests --viz)
 add_test(NAME AllTests COMMAND lightsaber_tests)
 
 # Set test properties
-set_tests_properties(MathTests USDLoaderTests SessionManagerTests AllTests
+set_tests_properties(MathTests USDLoaderTests SessionManagerTests VisualizationTests AllTests
     PROPERTIES
     TIMEOUT 60
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
