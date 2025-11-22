@@ -257,6 +257,27 @@ void TrainingSequenceController::updateAccuracy(int hits, int total) {
     }
 }
 
+void TrainingSequenceController::notifyEnemyKilled() {
+    if (m_waveState == WaveState::ACTIVE || m_waveState == WaveState::SPAWNING) {
+        m_waveEnemiesDefeated++;
+        m_currentWaveResult.enemiesDefeated = m_waveEnemiesDefeated;
+        LOG_DEBUG(LOG_TAG_TRAINING) << "Enemy killed: " << m_waveEnemiesDefeated
+                                     << "/" << m_waveEnemiesSpawned << " defeated";
+
+        // Check if all enemies defeated
+        if (m_waveEnemiesSpawned > 0 && m_waveEnemiesDefeated >= m_waveEnemiesSpawned) {
+            LOG_INFO(LOG_TAG_TRAINING) << "All enemies defeated!";
+            m_waveConditionMet = true;
+        }
+    }
+}
+
+void TrainingSequenceController::notifyPlayerHit(int damage) {
+    (void)damage;  // Could be used for health tracking in future
+    m_waveTotalShots++;  // Count as a "missed block" for accuracy
+    LOG_DEBUG(LOG_TAG_TRAINING) << "Player hit! (tracked for accuracy)";
+}
+
 void TrainingSequenceController::skipCurrentWave() {
     if (m_waveState == WaveState::ACTIVE || m_waveState == WaveState::PREPARING) {
         LOG_INFO(LOG_TAG_TRAINING) << "Skipping current wave (debug)";

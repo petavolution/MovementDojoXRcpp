@@ -235,6 +235,17 @@ public:
     void updateAccuracy(int hits, int total);
 
     /**
+     * Notify controller that an enemy was killed.
+     * This increments the defeated counter for wave completion tracking.
+     */
+    void notifyEnemyKilled();
+
+    /**
+     * Notify controller that player took a hit.
+     */
+    void notifyPlayerHit(int damage = 1);
+
+    /**
      * Skip current wave (for debugging/testing).
      */
     void skipCurrentWave();

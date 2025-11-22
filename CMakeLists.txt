@@ -245,6 +245,7 @@ add_executable(movement_dojo_simple
     src/core/Math.cpp
     src/training/Level1Training.cpp
     src/training/TrainingSequenceController.cpp
+    src/training/WaveSpawner.cpp
     src/procedural/ProceduralMeshUtils.cpp
     src/environments/Environment.cpp
 )

@@ -114,6 +114,7 @@
 #include "core/Logger.h"
 #include "training/Level1Training.h"
 #include "training/TrainingSequenceController.h"
+#include "training/WaveSpawner.h"
 #include "training/sequences/Level1SequenceConfig.h"
 #include "environments/Environment.h"
 #include <iostream>
@@ -922,7 +923,61 @@ int RunTrainingSequence(const std::string& sequenceId, const std::string& logPat
         return 1;
     }
 
-    // Set up callbacks for logging/feedback
+    // Create wave spawner for actual enemy spawning
+    LOG_INFO(LOG_TAG_SEQMODE) << "Creating wave spawner...";
+    auto* spawner = engine.addSystem<WaveSpawner>();
+    if (!spawner) {
+        LOG_ERROR(LOG_TAG_SEQMODE) << "Failed to create WaveSpawner";
+        std::cout << "\nTraining Sequence: FAIL - Spawner creation failed\n";
+        engine.shutdown();
+        Logger::flush();
+        Logger::shutdown();
+        return 1;
+    }
+
+    // =========================================================================
+    // Wire Controller <-> Spawner Callbacks
+    // =========================================================================
+
+    // When controller says "start a wave", tell spawner to spawn enemies
+    controller->setOnWaveStart([spawner](const TrainingWaveConfig& wave) {
+        LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Wave started: " << wave.name
+                                   << " (enemies=" << wave.getTotalEnemyCount() << ")";
+        // Start spawning enemies for this wave
+        spawner->startWave(wave);
+    });
+
+    // When controller says "wave ended", tell spawner to clean up
+    controller->setOnWaveEnd([spawner](const TrainingWaveConfig& wave, const WaveResult& result) {
+        LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Wave ended: " << wave.name
+                                   << " (" << waveResultTypeToString(result.type) << ")";
+        // Clean up any remaining enemies
+        spawner->stopWave();
+    });
+
+    // Spawner callbacks - notify controller when enemies are killed
+    spawner->setOnEnemyKilled([controller](int droneId) {
+        LOG_DEBUG(LOG_TAG_SEQMODE) << "[SPAWNER] Enemy killed: drone " << droneId;
+        controller->notifyEnemyKilled();
+        controller->addScore(100.0f);  // Score per kill
+    });
+
+    // Spawner callbacks - notify controller when player is hit
+    spawner->setOnPlayerHit([controller](int damage) {
+        LOG_DEBUG(LOG_TAG_SEQMODE) << "[SPAWNER] Player hit! (damage=" << damage << ")";
+        controller->notifyPlayerHit(damage);
+    });
+
+    // When all enemies in wave are defeated, notify controller
+    spawner->setOnWaveEnemiesCleared([controller](const WaveMetrics& metrics) {
+        LOG_INFO(LOG_TAG_SEQMODE) << "[SPAWNER] All enemies cleared!";
+        LOG_INFO(LOG_TAG_SEQMODE) << "  Kills: " << metrics.enemiesKilled << "/" << metrics.enemiesSpawned;
+        LOG_INFO(LOG_TAG_SEQMODE) << "  Block accuracy: " << (metrics.blockAccuracy() * 100.0f) << "%";
+        LOG_INFO(LOG_TAG_SEQMODE) << "  Score: " << metrics.score;
+        controller->notifyWaveConditionMet();
+    });
+
+    // Set up remaining controller callbacks for logging/feedback
     controller->setOnPhaseStart([](const TrainingPhaseConfig& phase) {
         LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Phase started: " << phase.name;
     });
@@ -932,21 +987,11 @@ int RunTrainingSequence(const std::string& sequenceId, const std::string& logPat
                                    << " (duration=" << result.duration << "s)";
     });
 
-    controller->setOnWaveStart([](const TrainingWaveConfig& wave) {
-        LOG_DEBUG(LOG_TAG_SEQMODE) << "[CALLBACK] Wave started: " << wave.name
-                                    << " (enemies=" << wave.getTotalEnemyCount() << ")";
-    });
-
-    controller->setOnWaveEnd([](const TrainingWaveConfig& wave, const WaveResult& result) {
-        LOG_DEBUG(LOG_TAG_SEQMODE) << "[CALLBACK] Wave ended: " << wave.name
-                                    << " (" << waveResultTypeToString(result.type) << ")";
-    });
-
     controller->setOnWaveSpawn([](const TrainingWaveConfig& wave, const EnemySpawnDef& spawn) {
-        LOG_DEBUG(LOG_TAG_SEQMODE) << "[CALLBACK] Spawn requested: "
+        (void)wave;  // Spawner handles this directly now
+        LOG_DEBUG(LOG_TAG_SEQMODE) << "[CALLBACK] Spawn definition: "
                                     << spawn.count << "x " << enemyTypeToString(spawn.type)
                                     << " (" << enemyBehaviorToString(spawn.behavior) << ")";
-        // NOTE: Actual spawning would be connected here to the enemy spawner system
     });
 
     controller->setOnPrompt([](const std::string& text, float duration) {
