@@ -42,6 +42,8 @@ struct EngineConfig {
 
     // XR options
     bool requestOverlay = false;
+    bool headlessMode = false;    // Run without XR hardware (for testing)
+    bool mockTracking = false;    // Generate mock tracking data in headless mode
 
     // Render options
     Color clearColor = Color(0.1f, 0.1f, 0.15f, 1.0f);
@@ -237,6 +239,9 @@ private:
 
     // Rendering
     void render();
+
+    // Mock tracking for headless mode
+    void updateMockTracking();
 
     // -------------------------------------------------------------------------
     // Configuration

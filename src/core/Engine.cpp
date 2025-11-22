@@ -12,6 +12,7 @@
 #include <thread>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 
 namespace lst {
 
@@ -50,13 +51,32 @@ bool Engine::initialize(const EngineConfig& config) {
 
     m_config = config;
     LOG_INFO("Engine") << "Initializing engine: " << config.appName;
+    LOG_INFO("Engine") << "  Headless mode: " << (config.headlessMode ? "yes" : "no");
+    LOG_INFO("Engine") << "  Mock tracking: " << (config.mockTracking ? "yes" : "no");
     log("Initializing engine: " + config.appName);
 
-    // Initialize OpenXR
-    if (!initializeXR()) {
-        LOG_ERROR("Engine") << "Failed to initialize OpenXR - check HMD connection";
-        log("Failed to initialize OpenXR");
-        return false;
+    // Initialize OpenXR (skip in headless mode)
+    if (!config.headlessMode) {
+        if (!initializeXR()) {
+            LOG_ERROR("Engine") << "Failed to initialize OpenXR - check HMD connection";
+            LOG_INFO("Engine") << "Tip: Use headlessMode=true for CLI testing without VR hardware";
+            log("Failed to initialize OpenXR");
+            return false;
+        }
+    } else {
+        LOG_INFO("Engine") << "Headless mode - skipping XR initialization";
+        m_xrReady = false;  // No XR in headless mode
+
+        // Setup default view configuration for headless
+        m_views.resize(2);  // Stereo views
+        for (auto& view : m_views) {
+            view.width = 1920;
+            view.height = 1080;
+            view.fov.angleLeft = -0.8f;
+            view.fov.angleRight = 0.8f;
+            view.fov.angleUp = 0.9f;
+            view.fov.angleDown = -0.9f;
+        }
     }
 
     m_initialized = true;
@@ -151,23 +171,31 @@ bool Engine::tick() {
     m_lastFrameTime = currentTime;
     m_totalTime += m_deltaTime;
 
-    // Poll XR events
-    pollXREvents();
+    // Headless mode: generate mock data and skip XR
+    if (m_config.headlessMode) {
+        if (m_config.mockTracking) {
+            updateMockTracking();
+        }
+        m_shouldRender = false;  // No rendering in headless mode
+    } else {
+        // Poll XR events
+        pollXREvents();
 
-    if (!m_running) {
-        return false;
-    }
+        if (!m_running) {
+            return false;
+        }
 
-    // Sync input if ready
-    if (m_xrReady) {
-        syncActions();
+        // Sync input if ready
+        if (m_xrReady) {
+            syncActions();
+        }
     }
 
     // Build frame context
     FrameContext ctx;
     ctx.deltaTime = m_deltaTime;
     ctx.totalTime = m_totalTime;
-    ctx.sessionReady = m_xrReady;
+    ctx.sessionReady = m_xrReady || m_config.headlessMode;
     ctx.shouldRender = m_shouldRender;
     ctx.predictedDisplayTime = m_predictedDisplayTime;
     ctx.headPose = m_headPose;
@@ -841,6 +869,65 @@ void Engine::render() {
         // Would draw debug primitives
         (void)cmd;
     }
+}
+
+// =============================================================================
+// Mock Tracking (for headless testing)
+// =============================================================================
+
+void Engine::updateMockTracking() {
+    // Generate simulated tracking data for CLI testing
+    // Controllers move in a figure-8 pattern, head stays mostly stationary
+
+    float t = static_cast<float>(m_totalTime);
+
+    // Head: slight natural movement
+    m_headPose.position = Vec3(
+        0.05f * std::sin(t * 0.3f),
+        1.6f + 0.02f * std::sin(t * 0.5f),  // Standing height ~1.6m
+        0.03f * std::cos(t * 0.4f)
+    );
+    m_headPose.orientation = Quat(1, 0, 0, 0);  // Looking forward
+
+    // Left controller: figure-8 pattern on left side
+    m_leftController.isTracked = true;
+    m_leftController.hand = Hand::Left;
+    m_leftController.position = Vec3(
+        -0.3f + 0.2f * std::sin(t * 1.2f),
+        1.0f + 0.3f * std::sin(t * 0.8f),
+        -0.4f + 0.15f * std::cos(t * 1.2f)
+    );
+    m_leftController.pose.position = m_leftController.position;
+    m_leftController.pose.orientation = Quat(1, 0, 0, 0);
+    m_leftController.orientation = m_leftController.pose.orientation;
+
+    // Calculate velocity from position change
+    static Vec3 lastLeftPos = m_leftController.position;
+    m_leftController.velocity = (m_leftController.position - lastLeftPos) * (1.0f / static_cast<float>(m_deltaTime));
+    lastLeftPos = m_leftController.position;
+
+    // Right controller: figure-8 pattern on right side
+    m_rightController.isTracked = true;
+    m_rightController.hand = Hand::Right;
+    m_rightController.position = Vec3(
+        0.3f + 0.2f * std::sin(t * 1.1f + 1.57f),
+        1.0f + 0.3f * std::cos(t * 0.9f),
+        -0.4f + 0.15f * std::sin(t * 1.1f)
+    );
+    m_rightController.pose.position = m_rightController.position;
+    m_rightController.pose.orientation = Quat(1, 0, 0, 0);
+    m_rightController.orientation = m_rightController.pose.orientation;
+
+    // Calculate velocity
+    static Vec3 lastRightPos = m_rightController.position;
+    m_rightController.velocity = (m_rightController.position - lastRightPos) * (1.0f / static_cast<float>(m_deltaTime));
+    lastRightPos = m_rightController.position;
+
+    // Simulate occasional trigger/grip presses
+    m_leftController.triggerValue = (std::sin(t * 2.0f) + 1.0f) * 0.5f * 0.3f;  // 0-0.3
+    m_rightController.triggerValue = (std::cos(t * 2.0f) + 1.0f) * 0.5f * 0.3f;
+    m_leftController.gripValue = 0.0f;
+    m_rightController.gripValue = 0.0f;
 }
 
 } // namespace lst

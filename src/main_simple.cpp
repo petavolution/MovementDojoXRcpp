@@ -148,6 +148,9 @@ private:
 int main(int argc, char* argv[]) {
     // Parse minimal command line
     bool overlayMode = false;
+    bool headlessMode = false;
+    bool mockTracking = false;
+    int maxFrames = 0;  // 0 = unlimited
     std::string scenePath;
 
     for (int i = 1; i < argc; i++) {
@@ -155,12 +158,21 @@ int main(int argc, char* argv[]) {
             std::cout << "Movement Dojo - Simplified Entry Point\n\n"
                       << "Usage: " << argv[0] << " [options]\n\n"
                       << "Options:\n"
-                      << "  --overlay         Run as VR overlay\n"
-                      << "  --scene <path>    Load USD scene file\n"
-                      << "  --help            Show this help\n";
+                      << "  --overlay           Run as VR overlay\n"
+                      << "  --headless          Run without VR hardware (CLI testing)\n"
+                      << "  --mock              Generate mock tracking data (with --headless)\n"
+                      << "  --frames <n>        Run for n frames then exit (testing)\n"
+                      << "  --scene <path>      Load USD scene file\n"
+                      << "  --help              Show this help\n";
             return 0;
         } else if (strcmp(argv[i], "--overlay") == 0) {
             overlayMode = true;
+        } else if (strcmp(argv[i], "--headless") == 0) {
+            headlessMode = true;
+        } else if (strcmp(argv[i], "--mock") == 0) {
+            mockTracking = true;
+        } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
+            maxFrames = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc) {
             scenePath = argv[++i];
         }
@@ -171,7 +183,11 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signalHandler);
 
     std::cout << "=== Movement Dojo ===" << std::endl;
-    std::cout << "Mode: " << (overlayMode ? "Overlay" : "Standalone") << std::endl;
+    if (headlessMode) {
+        std::cout << "Mode: Headless" << (mockTracking ? " (with mock tracking)" : "") << std::endl;
+    } else {
+        std::cout << "Mode: " << (overlayMode ? "Overlay" : "Standalone") << std::endl;
+    }
 
     // Create and configure engine
     Engine engine;
@@ -180,6 +196,8 @@ int main(int argc, char* argv[]) {
     EngineConfig config;
     config.appName = "Movement Dojo";
     config.requestOverlay = overlayMode;
+    config.headlessMode = headlessMode;
+    config.mockTracking = mockTracking;
     config.logCallback = [](const std::string& msg) {
         std::cout << "[Engine] " << msg << std::endl;
     };
@@ -193,7 +211,9 @@ int main(int argc, char* argv[]) {
     // Attach optional systems as plugins
     engine.addSystem<ControllerVisualizerSystem>();
     engine.addSystem<StatsDisplaySystem>();
-    engine.addSystem<ProximityHapticsSystem>();
+    if (!headlessMode) {
+        engine.addSystem<ProximityHapticsSystem>();
+    }
 
     // In a full implementation, would also add:
     // engine.addSystem<PhysicsSystem>();
@@ -201,13 +221,27 @@ int main(int argc, char* argv[]) {
     // engine.addSystem<ProgressionSystem>();
     // engine.addSystem<TrainingSystem>();
 
-    std::cout << "Engine initialized. Press Ctrl+C to exit." << std::endl;
+    if (headlessMode && maxFrames > 0) {
+        std::cout << "Running " << maxFrames << " frames in headless mode..." << std::endl;
+    } else {
+        std::cout << "Engine initialized. Press Ctrl+C to exit." << std::endl;
+    }
 
     // Start the session
     engine.startSession();
 
     // Run the main loop
-    engine.run();
+    if (maxFrames > 0) {
+        // Frame-limited run for testing
+        for (int frame = 0; frame < maxFrames && engine.tick(); frame++) {
+            if (frame % 100 == 0) {
+                std::cout << "[Progress] Frame " << frame << "/" << maxFrames << std::endl;
+            }
+        }
+    } else {
+        // Normal run
+        engine.run();
+    }
 
     // Cleanup
     engine.endSession();
