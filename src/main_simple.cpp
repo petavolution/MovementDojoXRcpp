@@ -115,6 +115,7 @@
 #include "training/Level1Training.h"
 #include "training/TrainingSequenceController.h"
 #include "training/WaveSpawner.h"
+#include "training/TrainingFeedback.h"
 #include "training/sequences/Level1SequenceConfig.h"
 #include "environments/Environment.h"
 #include <iostream>
@@ -846,22 +847,29 @@ int RunVrDiagnostics(const std::string& logPath) {
  * - Loads sequence configuration by ID
  * - Steps through phases and waves automatically
  * - Logs all transitions for debugging
+ * - Provides UX feedback with wave ratings
  *
  * @param sequenceId  ID of the sequence to run (e.g., "level1_fundamentals")
  * @param logPath     Path to log file
  * @param headless    Run without VR hardware
  * @param mock        Generate mock tracking data
  * @param envType     Training environment to load
+ * @param debugMode   Enable debug controls (skip phases, restart)
  *
  * Returns 0 on completion, 1 on failure
  */
 int RunTrainingSequence(const std::string& sequenceId, const std::string& logPath,
-                        bool headless, bool mock, EnvironmentType envType) {
+                        bool headless, bool mock, EnvironmentType envType, bool debugMode = false) {
     LOG_INFO(LOG_TAG_SEQMODE) << "========================================";
     LOG_INFO(LOG_TAG_SEQMODE) << "TRAINING SEQUENCE MODE";
     LOG_INFO(LOG_TAG_SEQMODE) << "========================================";
     LOG_INFO(LOG_TAG_SEQMODE) << "Sequence ID: " << sequenceId;
     LOG_INFO(LOG_TAG_SEQMODE) << "Environment: " << environmentTypeToString(envType);
+    if (debugMode) {
+        LOG_WARN(LOG_TAG_SEQMODE) << "DEBUG MODE ENABLED";
+        LOG_WARN(LOG_TAG_SEQMODE) << "  Press 'N' to skip to next phase";
+        LOG_WARN(LOG_TAG_SEQMODE) << "  Press 'R' to restart sequence";
+    }
     LOG_INFO(LOG_TAG_SEQMODE) << "";
 
     // Check if sequence exists
@@ -935,24 +943,58 @@ int RunTrainingSequence(const std::string& sequenceId, const std::string& logPat
         return 1;
     }
 
+    // Create feedback system for UX
+    LOG_INFO(LOG_TAG_SEQMODE) << "Creating feedback system...";
+    TrainingFeedback feedback;
+    feedback.setVerboseMode(debugMode);
+
+    // Configure rating thresholds for "chill" Level 1
+    WaveRatingConfig ratingConfig;
+    ratingConfig.goldMaxHits = 0;     // Perfect = no hits
+    ratingConfig.silverMaxHits = 2;   // Good = up to 2 hits
+    feedback.setRatingConfig(ratingConfig);
+
+    // Feedback text callback - for future HUD integration
+    feedback.setOnFeedbackText([debugMode](const std::string& text, float duration, bool important) {
+        if (debugMode || important) {
+            std::cout << "\n>>> " << text << " <<<\n" << std::endl;
+        }
+        (void)duration;  // Would be used for HUD timing
+    });
+
     // =========================================================================
-    // Wire Controller <-> Spawner Callbacks
+    // Wire Controller <-> Spawner <-> Feedback Callbacks
     // =========================================================================
 
+    // Track wave/phase counts for feedback
+    int currentWaveInPhase = 0;
+    int totalWavesInPhase = 0;
+    int currentPhaseNum = 0;
+    int totalPhases = sequenceConfig.getPhaseCount();
+
     // When controller says "start a wave", tell spawner to spawn enemies
-    controller->setOnWaveStart([spawner](const TrainingWaveConfig& wave) {
+    controller->setOnWaveStart([spawner, &feedback, &currentWaveInPhase, &totalWavesInPhase]
+                               (const TrainingWaveConfig& wave) {
+        currentWaveInPhase++;
         LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Wave started: " << wave.name
                                    << " (enemies=" << wave.getTotalEnemyCount() << ")";
         // Start spawning enemies for this wave
         spawner->startWave(wave);
+        // Feedback
+        feedback.onWaveStart(wave, currentWaveInPhase, totalWavesInPhase);
     });
 
     // When controller says "wave ended", tell spawner to clean up
-    controller->setOnWaveEnd([spawner](const TrainingWaveConfig& wave, const WaveResult& result) {
+    controller->setOnWaveEnd([spawner, &feedback](const TrainingWaveConfig& wave, const WaveResult& result) {
         LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Wave ended: " << wave.name
                                    << " (" << waveResultTypeToString(result.type) << ")";
+        // Get metrics from spawner before cleanup
+        auto metrics = spawner->getMetrics();
+        bool success = (result.type == WaveResultType::COMPLETED);
         // Clean up any remaining enemies
         spawner->stopWave();
+        // Feedback with rating
+        feedback.onWaveEnd(wave, metrics, success);
     });
 
     // Spawner callbacks - notify controller when enemies are killed
@@ -978,13 +1020,20 @@ int RunTrainingSequence(const std::string& sequenceId, const std::string& logPat
     });
 
     // Set up remaining controller callbacks for logging/feedback
-    controller->setOnPhaseStart([](const TrainingPhaseConfig& phase) {
+    controller->setOnPhaseStart([&feedback, &currentPhaseNum, &totalPhases,
+                                 &currentWaveInPhase, &totalWavesInPhase]
+                                (const TrainingPhaseConfig& phase) {
+        currentPhaseNum++;
+        currentWaveInPhase = 0;
+        totalWavesInPhase = phase.getWaveCount();
         LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Phase started: " << phase.name;
+        feedback.onPhaseStart(phase, currentPhaseNum, totalPhases);
     });
 
-    controller->setOnPhaseEnd([](const TrainingPhaseConfig& phase, const PhaseResult& result) {
+    controller->setOnPhaseEnd([&feedback](const TrainingPhaseConfig& phase, const PhaseResult& result) {
         LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Phase ended: " << phase.name
                                    << " (duration=" << result.duration << "s)";
+        feedback.onPhaseEnd(phase, result.duration, result.wavesCompleted, result.wavesFailed);
     });
 
     controller->setOnWaveSpawn([](const TrainingWaveConfig& wave, const EnemySpawnDef& spawn) {
@@ -998,12 +1047,16 @@ int RunTrainingSequence(const std::string& sequenceId, const std::string& logPat
         LOG_INFO(LOG_TAG_SEQMODE) << "[PROMPT] (" << duration << "s) " << text;
     });
 
-    controller->setOnSequenceEnd([](const TrainingSequenceConfig& seq, const SequenceResult& result) {
+    controller->setOnSequenceEnd([&feedback](const TrainingSequenceConfig& seq, const SequenceResult& result) {
         LOG_INFO(LOG_TAG_SEQMODE) << "[CALLBACK] Sequence complete: " << seq.name;
         LOG_INFO(LOG_TAG_SEQMODE) << "  Result: " << (result.passed ? "PASSED" : "ENDED");
         LOG_INFO(LOG_TAG_SEQMODE) << "  Duration: " << result.totalDuration << "s";
         LOG_INFO(LOG_TAG_SEQMODE) << "  Score: " << result.scorePercentage << "%";
+        feedback.onSequenceEnd(seq, result.passed, result.totalDuration);
     });
+
+    // Initialize feedback with sequence info
+    feedback.onSequenceStart(sequenceConfig);
 
     // Load and start the sequence
     LOG_INFO(LOG_TAG_SEQMODE) << "Loading sequence configuration...";
@@ -1072,6 +1125,7 @@ int main(int argc, char* argv[]) {
     bool vrSmokeTest = false;
     bool level1Training = false;
     bool trainingSequenceMode = false;
+    bool trainingDebug = false;
     std::string trainingSequenceId;
     int maxFrames = 0;  // 0 = unlimited
     std::string scenePath;
@@ -1097,6 +1151,7 @@ int main(int argc, char* argv[]) {
                       << "                      Available: level1, level1_fundamentals\n"
                       << "  --training-sequence-level1\n"
                       << "                      Shortcut for --training-sequence=level1_fundamentals\n"
+                      << "  --training-debug    Enable debug mode (skip phases, verbose feedback)\n"
                       << "  --env=<type>        Select training environment:\n"
                       << "                        ocean     - Ocean Platform (calm, meditative)\n"
                       << "                        dojo      - Kung-Fu Dojo (default)\n"
@@ -1127,6 +1182,8 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "--training-sequence") == 0 && i + 1 < argc) {
             trainingSequenceMode = true;
             trainingSequenceId = argv[++i];
+        } else if (strcmp(argv[i], "--training-debug") == 0) {
+            trainingDebug = true;
         } else if (strcmp(argv[i], "--overlay") == 0) {
             overlayMode = true;
         } else if (strcmp(argv[i], "--headless") == 0) {
@@ -1188,7 +1245,7 @@ int main(int argc, char* argv[]) {
 
     // Handle Training Sequence mode (new data-driven system)
     if (trainingSequenceMode) {
-        return RunTrainingSequence(trainingSequenceId, logPath, headlessMode, mockTracking, envType);
+        return RunTrainingSequence(trainingSequenceId, logPath, headlessMode, mockTracking, envType, trainingDebug);
     }
 
     // Log startup
