@@ -38,6 +38,8 @@ namespace lst {
 
 class Engine;
 class System;
+class Environment;
+enum class EnvironmentType;
 
 // =============================================================================
 // Engine Configuration
@@ -222,6 +224,38 @@ public:
     XrSpace getStageSpace() const { return m_stageSpace; }
 
     // -------------------------------------------------------------------------
+    // Environment Management
+    // -------------------------------------------------------------------------
+
+    /**
+     * Load and switch to a new environment
+     * Cleans up previous environment if one exists
+     * @param type  The environment type to load
+     * @return true if environment loaded successfully
+     */
+    bool loadEnvironment(EnvironmentType type);
+
+    /**
+     * Unload the current environment (cleanup without loading new)
+     */
+    void unloadEnvironment();
+
+    /**
+     * Get the currently loaded environment (may be null)
+     */
+    Environment* getEnvironment() const { return m_environment.get(); }
+
+    /**
+     * Get the current environment type
+     */
+    EnvironmentType getEnvironmentType() const { return m_environmentType; }
+
+    /**
+     * Check if an environment is currently loaded
+     */
+    bool hasEnvironment() const { return m_environment != nullptr; }
+
+    // -------------------------------------------------------------------------
     // Utilities
     // -------------------------------------------------------------------------
 
@@ -358,6 +392,12 @@ private:
     // Systems
     // -------------------------------------------------------------------------
     std::vector<std::unique_ptr<System>> m_systems;
+
+    // -------------------------------------------------------------------------
+    // Environment
+    // -------------------------------------------------------------------------
+    std::unique_ptr<Environment> m_environment;
+    EnvironmentType m_environmentType;
 };
 
 // =============================================================================

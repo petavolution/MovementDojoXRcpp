@@ -7,6 +7,7 @@
 
 #include "Engine.h"
 #include "Logger.h"
+#include "../environments/Environment.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -97,6 +98,12 @@ void Engine::shutdown() {
     if (m_sessionActive) {
         LOG_DEBUG(LOG_TAG_ENGINE) << "Ending active session...";
         endSession();
+    }
+
+    // Unload environment
+    if (m_environment) {
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Unloading environment...";
+        unloadEnvironment();
     }
 
     // Detach all systems
@@ -246,6 +253,11 @@ bool Engine::tick() {
     // Post-update systems
     for (auto& sys : m_systems) {
         sys->onPostUpdate(ctx);
+    }
+
+    // Update environment (animations, effects)
+    if (m_environment) {
+        m_environment->update(static_cast<float>(m_deltaTime));
     }
 
     // Render frame
@@ -1204,6 +1216,55 @@ void Engine::updateMockTracking() {
     m_rightController.triggerValue = (std::cos(t * 2.0f) + 1.0f) * 0.5f * 0.3f;
     m_leftController.gripValue = 0.0f;
     m_rightController.gripValue = 0.0f;
+}
+
+// =============================================================================
+// Environment Management
+// =============================================================================
+
+bool Engine::loadEnvironment(EnvironmentType type) {
+    LOG_INFO(LOG_TAG_ENGINE) << "Loading environment: " << environmentTypeToString(type);
+
+    // Unload previous environment if exists
+    if (m_environment) {
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Unloading previous environment...";
+        unloadEnvironment();
+    }
+
+    // Create new environment
+    try {
+        m_environment = createEnvironment(type);
+        if (!m_environment) {
+            LOG_ERROR(LOG_TAG_ENGINE) << "Failed to create environment: " << environmentTypeToString(type);
+            return false;
+        }
+
+        // Setup the environment
+        if (!m_environment->setup(this)) {
+            LOG_ERROR(LOG_TAG_ENGINE) << "Failed to setup environment: " << m_environment->getName();
+            m_environment.reset();
+            return false;
+        }
+
+        m_environmentType = type;
+        LOG_INFO(LOG_TAG_ENGINE) << "Environment loaded successfully: " << m_environment->getName()
+                                  << " - " << m_environment->getDescription();
+        return true;
+
+    } catch (const std::exception& e) {
+        LOG_ERROR(LOG_TAG_ENGINE) << "Exception loading environment: " << e.what();
+        m_environment.reset();
+        return false;
+    }
+}
+
+void Engine::unloadEnvironment() {
+    if (m_environment) {
+        LOG_INFO(LOG_TAG_ENGINE) << "Unloading environment: " << m_environment->getName();
+        m_environment->cleanup(this);
+        m_environment.reset();
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Environment unloaded";
+    }
 }
 
 } // namespace lst

@@ -113,6 +113,7 @@
 #include "core/Engine.h"
 #include "core/Logger.h"
 #include "training/Level1Training.h"
+#include "environments/Environment.h"
 #include <iostream>
 #include <csignal>
 #include <cstring>
@@ -483,12 +484,18 @@ int RunVrSmokeTest(const std::string& logPath) {
  * - XR session validity (for VR mode)
  * - Basic input availability
  *
+ * @param logPath   Path to log file
+ * @param headless  Run without VR hardware
+ * @param mock      Generate mock tracking data
+ * @param envType   Training environment to load
+ *
  * Returns 0 on completion, 1 on failure
  */
-int RunLevel1Training(const std::string& logPath, bool headless, bool mock) {
+int RunLevel1Training(const std::string& logPath, bool headless, bool mock, EnvironmentType envType) {
     LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
     LOG_INFO(LOG_TAG_LEVEL1) << "DOJO LEVEL 1 - Basic Training";
     LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
+    LOG_INFO(LOG_TAG_LEVEL1) << "Environment: " << environmentTypeToString(envType);
     LOG_INFO(LOG_TAG_LEVEL1) << "Starting Level 1 dojo experience (chilled training mode).";
     LOG_INFO(LOG_TAG_LEVEL1) << "";
 
@@ -563,6 +570,29 @@ int RunLevel1Training(const std::string& logPath, bool headless, bool mock) {
 
     LOG_INFO(LOG_TAG_LEVEL1) << "";
     LOG_INFO(LOG_TAG_LEVEL1) << "Pre-flight checks: PASS";
+    LOG_INFO(LOG_TAG_LEVEL1) << "";
+
+    // =========================================================================
+    // Load Training Environment
+    // =========================================================================
+    LOG_INFO(LOG_TAG_LEVEL1) << "Loading environment: " << environmentTypeToString(envType) << "...";
+
+    if (!engine.loadEnvironment(envType)) {
+        LOG_WARN(LOG_TAG_LEVEL1) << "Failed to load environment '" << environmentTypeToString(envType)
+                                  << "', trying fallback to Dojo...";
+
+        // Try fallback to dojo environment
+        if (envType != EnvironmentType::DOJO && !engine.loadEnvironment(EnvironmentType::DOJO)) {
+            LOG_WARN(LOG_TAG_LEVEL1) << "Fallback to Dojo also failed, continuing without environment";
+            // Continue anyway - Level 1 can work without environment (just won't look as nice)
+        }
+    }
+
+    if (engine.hasEnvironment()) {
+        LOG_INFO(LOG_TAG_LEVEL1) << "Environment loaded: " << engine.getEnvironment()->getName();
+    } else {
+        LOG_WARN(LOG_TAG_LEVEL1) << "No environment loaded - training will continue with default scene";
+    }
     LOG_INFO(LOG_TAG_LEVEL1) << "";
 
     // =========================================================================
@@ -819,6 +849,8 @@ int main(int argc, char* argv[]) {
     LogLevel fileLogLevel = LogLevel::DEBUG;
     bool verbose = false;
     bool quiet = false;
+    EnvironmentType envType = EnvironmentType::DOJO;  // Default environment
+    std::string envString;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -829,6 +861,10 @@ int main(int argc, char* argv[]) {
                       << "  --vr-smoke-test     Run visual VR test with dojo scene\n"
                       << "  --level1, --dojo-level1\n"
                       << "                      Run Level 1 Training (chilled tutorial)\n"
+                      << "  --env=<type>        Select training environment:\n"
+                      << "                        ocean     - Ocean Platform (calm, meditative)\n"
+                      << "                        dojo      - Kung-Fu Dojo (default)\n"
+                      << "                        hyperspace - Spaceship Hyperspace\n"
                       << "  --overlay           Run as VR overlay\n"
                       << "  --headless          Run without VR hardware (CLI testing)\n"
                       << "  --mock              Generate mock tracking data (with --headless)\n"
@@ -868,6 +904,12 @@ int main(int argc, char* argv[]) {
         } else if (strcmp(argv[i], "--quiet") == 0 || strcmp(argv[i], "-q") == 0) {
             quiet = true;
             consoleLogLevel = LogLevel::WARN;
+        } else if (strncmp(argv[i], "--env=", 6) == 0) {
+            envString = argv[i] + 6;
+            envType = parseEnvironmentType(envString);
+        } else if (strcmp(argv[i], "--env") == 0 && i + 1 < argc) {
+            envString = argv[++i];
+            envType = parseEnvironmentType(envString);
         }
     }
 
@@ -896,7 +938,7 @@ int main(int argc, char* argv[]) {
 
     // Handle Level 1 Training mode
     if (level1Training) {
-        return RunLevel1Training(logPath, headlessMode, mockTracking);
+        return RunLevel1Training(logPath, headlessMode, mockTracking, envType);
     }
 
     // Log startup
