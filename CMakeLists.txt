@@ -243,7 +243,6 @@ add_executable(movement_dojo_simple
     ${ANALYTICS_SOURCES}
     ${PROGRESSION_SOURCES}
     src/core/Math.cpp
-    src/training/Level1Training.cpp
     src/training/TrainingSequenceController.cpp
     src/training/WaveSpawner.cpp
     src/procedural/ProceduralMeshUtils.cpp

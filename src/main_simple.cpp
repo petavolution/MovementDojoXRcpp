@@ -1,118 +1,53 @@
 /**
  * Movement Dojo - Simplified Entry Point
  *
- * Demonstrates the unified Engine architecture with clean startup sequence.
- * All optional systems are attached as plugins after initialization.
+ * Unified Engine architecture with data-driven training sequences.
+ * Uses TrainingSequenceController + WaveSpawner for all training modes.
  *
  * Usage:
- *   ./movement_dojo_simple [--overlay] [--scene path.usda]
+ *   ./movement_dojo_simple [--level1] [--overlay] [--headless] [--mock]
  *
  * =============================================================================
- * DOJO TEST RITUAL - Manual VR Test Procedure
+ * QUICK START - VR Test Procedure
  * =============================================================================
  *
- * Before testing new features on Quest 3 + Virtual Desktop + SteamVR:
+ * Prerequisites: Quest 3 + Virtual Desktop + SteamVR
  *
- * Step 1: Prepare the VR Environment
- *   - Start SteamVR on PC
- *   - Put on Quest 3 and launch Virtual Desktop
- *   - Connect to PC and wait for SteamVR to detect headset
- *   - Verify: SteamVR status shows "Ready" (green icon)
- *
- * Step 2: Run VR Diagnostics
- *   $ ./bin/movement_dojo_simple --vr-diagnostics -v
- *
- *   Expected output:
- *     "VR Diagnostics: PASS - Ready for dojo prototype."
- *
- *   If FAIL:
- *     - Check log at ./logs/engine.log for detailed errors
- *     - Verify SteamVR is running and HMD is detected
- *     - Restart SteamVR and Virtual Desktop if needed
- *
- * Step 3: Run VR Smoke Test (Visual Check)
- *   $ ./bin/movement_dojo_simple --vr-smoke-test -v
- *
- *   Look around in VR - you should see:
- *     - Gray floor (5m x 5m)
- *     - 4 dark red corner pillars
- *     - Cyan saber in right hand (follows controller)
- *     - Gray blaster in left hand (follows controller)
- *     - Red hovering drone sphere ahead (~1.5m up, 1.5m forward)
- *
- *   In the log, verify:
- *     - "HMD=OK" in periodic status messages
- *     - "L=tracked R=tracked" for controllers
- *     - No repeated warnings about lost tracking
- *
- *   Press Ctrl+C to exit when done.
- *
- * Step 4: (Optional) Headless CI/CD Test
- *   $ ./bin/movement_dojo_simple --headless --mock --frames 100 -v
- *
- *   Expected: Runs 100 frames with mock tracking, exits cleanly.
- *
- * =============================================================================
- * LEVEL 1 TEST RITUAL - Dojo Training Mode
- * =============================================================================
- *
- * Level 1 is a gentle, chilled training experience designed to demonstrate:
- * - Saber basics (blocking + striking)
- * - Blaster basics (aiming + shooting)
- * - Simple drone encounters
- *
- * Procedure:
- *
- * Step 1: Verify VR Readiness (do this once per session)
+ * Step 1: Verify VR Setup
  *   $ ./bin/movement_dojo_simple --vr-diagnostics -v
  *   Expected: "VR Diagnostics: PASS"
  *
- * Step 2: (Optional) Visual sanity check
- *   $ ./bin/movement_dojo_simple --vr-smoke-test -v
- *   Expected: See dojo scene with weapons and drone
+ * Step 2: Run Level 1 Training
+ *   $ ./bin/movement_dojo_simple --level1 -v
  *
- * Step 3: Run Level 1 Training (VR mode)
- *   $ ./bin/movement_dojo_simple --dojo-level1 -v
+ * Step 3: (Optional) Headless CI/CD Test
+ *   $ ./bin/movement_dojo_simple --level1 --headless --mock -v
  *
- *   Expected gameplay:
- *     - INTRO (10s): Welcome, see your weapons
- *     - SABER_DRILL (45s): Block slow projectiles with saber
- *     - BLASTER_DRILL (45s): Shoot stationary/slow drones
- *     - MIXED_DRILL (60s): Combined combat with dive attack at ~30s
- *     - SUMMARY (10s): See your score and grade
+ * =============================================================================
+ * LEVEL 1 TRAINING - Data-Driven Sequence
+ * =============================================================================
  *
- *   Expected logs:
- *     - "Pre-flight checks: PASS"
- *     - State transitions logged clearly
- *     - Projectile blocked/missed counts
- *     - Final summary with OVERALL SCORE and GRADE
+ * Level 1 "Fundamentals" teaches basic saber and blaster skills through
+ * a structured sequence of phases and waves:
  *
- *   Success criteria:
- *     - Smooth transitions through all 5 states
- *     - No crashes or hard errors
- *     - Dive attack clearly telegraphed (drone shakes/glows red)
- *     - Summary shows performance grade
+ *   Phase 1: Warm-Up       - Introduction, first drone encounter
+ *   Phase 2: Block Basics  - Learn to block projectiles with saber
+ *   Phase 3: Strike Basics - Learn to destroy drones with saber strikes
+ *   Phase 4: Blaster Intro - Learn to shoot drones at range
+ *   Phase 5: Combination   - Mix blocking, striking, and shooting
  *
- * Step 4: (Optional) Headless Level 1 Test
- *   $ ./bin/movement_dojo_simple --dojo-level1 --headless --mock -v
+ * Each wave is rated Gold/Silver/Bronze based on hits taken:
+ *   - Gold:   No hits taken (perfect)
+ *   - Silver: 1-2 hits taken
+ *   - Bronze: 3+ hits taken
  *
- *   Expected: Runs full level with mock tracking, outputs summary, exits cleanly.
- *   Note: Score will be 0% since mock tracking doesn't simulate blocking/shooting.
- *
- * Troubleshooting:
- *   - "Level 1 aborted: Engine initialization failed"
- *     -> Run --vr-diagnostics first
- *   - "Level 1 aborted: XR session not ready"
- *     -> Check HMD is awake and SteamVR is running
- *   - Level completes but low score
- *     -> Normal for mock mode; requires real VR input
+ * Run with --training-debug for verbose feedback and skip controls.
  *
  * =============================================================================
  */
 
 #include "core/Engine.h"
 #include "core/Logger.h"
-#include "training/Level1Training.h"
 #include "training/TrainingSequenceController.h"
 #include "training/WaveSpawner.h"
 #include "training/TrainingFeedback.h"
@@ -459,182 +394,6 @@ int RunVrSmokeTest(const std::string& logPath) {
 
     LOG_INFO(LOG_TAG_DIAG) << "VR Smoke Test completed (logs flushed)";
     std::cout << "\nVR Smoke Test: Completed\n";
-
-    Logger::flush();
-    Logger::shutdown();
-    return 0;
-}
-
-// =============================================================================
-// Level 1 Training Mode
-// =============================================================================
-
-// Log tag for Level 1 launcher
-#define LOG_TAG_LEVEL1 "Level1"
-
-/**
- * RunLevel1Training - Dojo Level 1 Training Experience
- *
- * A gentle, tutorial-like training that demonstrates:
- * - Saber basics (blocking + striking)
- * - Blaster basics (aiming + shooting)
- * - Simple drone encounters
- *
- * Flow: INTRO -> SABER_DRILL -> BLASTER_DRILL -> MIXED_DRILL -> SUMMARY
- * Duration: ~3 minutes
- *
- * Pre-flight checks:
- * - Engine initialization (OpenXR or headless)
- * - XR session validity (for VR mode)
- * - Basic input availability
- *
- * @param logPath   Path to log file
- * @param headless  Run without VR hardware
- * @param mock      Generate mock tracking data
- * @param envType   Training environment to load
- *
- * Returns 0 on completion, 1 on failure
- */
-int RunLevel1Training(const std::string& logPath, bool headless, bool mock, EnvironmentType envType) {
-    LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
-    LOG_INFO(LOG_TAG_LEVEL1) << "DOJO LEVEL 1 - Basic Training";
-    LOG_INFO(LOG_TAG_LEVEL1) << "========================================";
-    LOG_INFO(LOG_TAG_LEVEL1) << "Environment: " << environmentTypeToString(envType);
-    LOG_INFO(LOG_TAG_LEVEL1) << "Starting Level 1 dojo experience (chilled training mode).";
-    LOG_INFO(LOG_TAG_LEVEL1) << "";
-
-    std::string failReason;
-
-    // Create engine
-    Engine engine;
-    g_engine = &engine;
-
-    EngineConfig config;
-    config.appName = "Dojo Level 1";
-    config.headlessMode = headless;
-    config.mockTracking = mock;
-
-    // =========================================================================
-    // Pre-flight Check 1: Mode and Configuration
-    // =========================================================================
-    LOG_INFO(LOG_TAG_LEVEL1) << "Pre-flight checks:";
-
-    if (headless) {
-        LOG_INFO(LOG_TAG_LEVEL1) << "  [1/3] Mode: Headless" << (mock ? " + Mock tracking" : "");
-    } else {
-        LOG_INFO(LOG_TAG_LEVEL1) << "  [1/3] Mode: VR (OpenXR)";
-        LOG_INFO(LOG_TAG_LEVEL1) << "        Requires: SteamVR + HMD + Controllers";
-    }
-
-    // =========================================================================
-    // Pre-flight Check 2: Engine Initialization
-    // =========================================================================
-    LOG_INFO(LOG_TAG_LEVEL1) << "  [2/3] Initializing engine...";
-
-    if (!engine.initialize(config)) {
-        failReason = "Engine initialization failed";
-        LOG_ERROR(LOG_TAG_LEVEL1) << "Level 1 aborted: " << failReason << ". Check configuration/assets/XR runtime.";
-        if (!headless) {
-            LOG_ERROR(LOG_TAG_LEVEL1) << "Troubleshooting:";
-            LOG_ERROR(LOG_TAG_LEVEL1) << "  1. Is SteamVR running?";
-            LOG_ERROR(LOG_TAG_LEVEL1) << "  2. Is the HMD connected and detected?";
-            LOG_ERROR(LOG_TAG_LEVEL1) << "  3. Is Virtual Desktop streaming active?";
-            LOG_ERROR(LOG_TAG_LEVEL1) << "  Tip: Run --vr-diagnostics first to verify VR readiness.";
-        }
-        std::cout << "\nLevel 1 Training: FAIL - " << failReason << "\n";
-        std::cout << "See log at: " << logPath << "\n";
-        engine.shutdown();
-        Logger::flush();
-        Logger::shutdown();
-        return 1;
-    }
-    LOG_INFO(LOG_TAG_LEVEL1) << "        Engine initialized OK";
-
-    // =========================================================================
-    // Pre-flight Check 3: XR Readiness (for VR mode)
-    // =========================================================================
-    if (!headless) {
-        LOG_INFO(LOG_TAG_LEVEL1) << "  [3/3] Checking XR session...";
-        if (!engine.isXRReady()) {
-            failReason = "XR session not ready";
-            LOG_ERROR(LOG_TAG_LEVEL1) << "Level 1 aborted: " << failReason << ". Check configuration/assets/XR runtime.";
-            LOG_ERROR(LOG_TAG_LEVEL1) << "The HMD may be disconnected or in sleep mode.";
-            LOG_ERROR(LOG_TAG_LEVEL1) << "Tip: Run --vr-diagnostics to verify VR readiness.";
-            std::cout << "\nLevel 1 Training: FAIL - " << failReason << "\n";
-            std::cout << "See log at: " << logPath << "\n";
-            engine.shutdown();
-            Logger::flush();
-            Logger::shutdown();
-            return 1;
-        }
-        LOG_INFO(LOG_TAG_LEVEL1) << "        XR session OK";
-    } else {
-        LOG_INFO(LOG_TAG_LEVEL1) << "  [3/3] XR check: Skipped (headless mode)";
-    }
-
-    LOG_INFO(LOG_TAG_LEVEL1) << "";
-    LOG_INFO(LOG_TAG_LEVEL1) << "Pre-flight checks: PASS";
-    LOG_INFO(LOG_TAG_LEVEL1) << "";
-
-    // =========================================================================
-    // Load Training Environment
-    // =========================================================================
-    LOG_INFO(LOG_TAG_LEVEL1) << "Loading environment: " << environmentTypeToString(envType) << "...";
-
-    if (!engine.loadEnvironment(envType)) {
-        LOG_WARN(LOG_TAG_LEVEL1) << "Failed to load environment '" << environmentTypeToString(envType)
-                                  << "', trying fallback to Dojo...";
-
-        // Try fallback to dojo environment
-        if (envType != EnvironmentType::DOJO && !engine.loadEnvironment(EnvironmentType::DOJO)) {
-            LOG_WARN(LOG_TAG_LEVEL1) << "Fallback to Dojo also failed, continuing without environment";
-            // Continue anyway - Level 1 can work without environment (just won't look as nice)
-        }
-    }
-
-    if (engine.hasEnvironment()) {
-        LOG_INFO(LOG_TAG_LEVEL1) << "Environment loaded: " << engine.getEnvironment()->getName();
-    } else {
-        LOG_WARN(LOG_TAG_LEVEL1) << "No environment loaded - training will continue with default scene";
-    }
-    LOG_INFO(LOG_TAG_LEVEL1) << "";
-
-    // =========================================================================
-    // Load Level 1 Training System
-    // =========================================================================
-    LOG_INFO(LOG_TAG_LEVEL1) << "Loading Level 1 Training System...";
-
-    // addSystem returns bool; if it fails we should handle gracefully
-    if (!engine.addSystem<Level1TrainingSystem>()) {
-        failReason = "Failed to load Level 1 Training System";
-        LOG_ERROR(LOG_TAG_LEVEL1) << "Level 1 aborted: " << failReason << ". Check configuration/assets/XR runtime.";
-        std::cout << "\nLevel 1 Training: FAIL - " << failReason << "\n";
-        std::cout << "See log at: " << logPath << "\n";
-        engine.shutdown();
-        Logger::flush();
-        Logger::shutdown();
-        return 1;
-    }
-
-    LOG_INFO(LOG_TAG_LEVEL1) << "Level 1 Training System loaded successfully";
-    LOG_INFO(LOG_TAG_LEVEL1) << "";
-
-    // =========================================================================
-    // Start Level 1 Session
-    // =========================================================================
-    LOG_INFO(LOG_TAG_LEVEL1) << "Starting Level 1 session...";
-    LOG_INFO(LOG_TAG_LEVEL1) << "Press Ctrl+C to exit at any time";
-    LOG_INFO(LOG_TAG_LEVEL1) << "";
-
-    engine.startSession();
-    engine.run();
-    engine.endSession();
-    engine.shutdown();
-
-    LOG_INFO(LOG_TAG_LEVEL1) << "";
-    LOG_INFO(LOG_TAG_LEVEL1) << "Level 1 completed successfully.";
-    LOG_INFO(LOG_TAG_LEVEL1) << "Session ended (logs flushed)";
-    std::cout << "\nLevel 1 Training: Completed\n";
 
     Logger::flush();
     Logger::shutdown();
@@ -1123,7 +882,6 @@ int main(int argc, char* argv[]) {
     bool mockTracking = false;
     bool vrDiagnostics = false;
     bool vrSmokeTest = false;
-    bool level1Training = false;
     bool trainingSequenceMode = false;
     bool trainingDebug = false;
     std::string trainingSequenceId;
@@ -1145,10 +903,10 @@ int main(int argc, char* argv[]) {
                       << "  --vr-diagnostics    Run VR readiness check and exit\n"
                       << "  --vr-smoke-test     Run visual VR test with dojo scene\n"
                       << "  --level1, --dojo-level1\n"
-                      << "                      Run Level 1 Training (old system)\n"
+                      << "                      Run Level 1 Training (alias for --training-sequence-level1)\n"
                       << "  --training-sequence=<id>\n"
-                      << "                      Run training sequence (new data-driven system)\n"
-                      << "                      Available: level1, level1_fundamentals\n"
+                      << "                      Run training sequence by ID\n"
+                      << "                      Available: level1_fundamentals\n"
                       << "  --training-sequence-level1\n"
                       << "                      Shortcut for --training-sequence=level1_fundamentals\n"
                       << "  --training-debug    Enable debug mode (skip phases, verbose feedback)\n"
@@ -1171,9 +929,8 @@ int main(int argc, char* argv[]) {
             vrDiagnostics = true;
         } else if (strcmp(argv[i], "--vr-smoke-test") == 0) {
             vrSmokeTest = true;
-        } else if (strcmp(argv[i], "--level1") == 0 || strcmp(argv[i], "--dojo-level1") == 0) {
-            level1Training = true;
-        } else if (strcmp(argv[i], "--training-sequence-level1") == 0) {
+        } else if (strcmp(argv[i], "--level1") == 0 || strcmp(argv[i], "--dojo-level1") == 0 ||
+                   strcmp(argv[i], "--training-sequence-level1") == 0) {
             trainingSequenceMode = true;
             trainingSequenceId = "level1_fundamentals";
         } else if (strncmp(argv[i], "--training-sequence=", 20) == 0) {
@@ -1238,12 +995,7 @@ int main(int argc, char* argv[]) {
         return RunVrSmokeTest(logPath);
     }
 
-    // Handle Level 1 Training mode (legacy)
-    if (level1Training) {
-        return RunLevel1Training(logPath, headlessMode, mockTracking, envType);
-    }
-
-    // Handle Training Sequence mode (new data-driven system)
+    // Handle Training Sequence mode
     if (trainingSequenceMode) {
         return RunTrainingSequence(trainingSequenceId, logPath, headlessMode, mockTracking, envType, trainingDebug);
     }
