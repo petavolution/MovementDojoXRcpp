@@ -265,6 +265,12 @@ private:
     bool m_xrReady = false;
     bool m_overlayActive = false;
     bool m_shouldRender = false;
+    bool m_usingVulkan = false;
+    bool m_usingOpenGL = false;
+
+    // Runtime info for diagnostics
+    std::string m_runtimeName = "Unknown";
+    std::string m_systemName = "Unknown";
 
     double m_totalTime = 0;
     double m_deltaTime = 0;

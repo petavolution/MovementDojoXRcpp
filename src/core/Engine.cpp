@@ -396,12 +396,64 @@ void Engine::triggerHaptic(Hand hand, float intensity, float duration) {
 // =============================================================================
 
 bool Engine::initializeXR() {
-    if (!createXRInstance()) return false;
-    if (!createXRSession()) return false;
-    if (!createXRSpaces()) return false;
-    if (!createXRSwapchains()) return false;
-    if (!createXRActions()) return false;
+    LOG_INFO(LOG_TAG_XR) << "========================================";
+    LOG_INFO(LOG_TAG_XR) << "OpenXR Startup Sequence";
+    LOG_INFO(LOG_TAG_XR) << "========================================";
 
+    // Step 1: Create instance and query runtime
+    LOG_INFO(LOG_TAG_XR) << "Step 1/5: Creating OpenXR instance...";
+    if (!createXRInstance()) {
+        LOG_ERROR(LOG_TAG_XR) << "Step 1/5 FAILED - Cannot create OpenXR instance";
+        return false;
+    }
+    LOG_INFO(LOG_TAG_XR) << "Step 1/5: Instance created successfully";
+
+    // Step 2: Create session with graphics binding
+    LOG_INFO(LOG_TAG_XR) << "Step 2/5: Creating XR session...";
+    if (!createXRSession()) {
+        LOG_ERROR(LOG_TAG_XR) << "Step 2/5 FAILED - Cannot create XR session";
+        return false;
+    }
+    LOG_INFO(LOG_TAG_XR) << "Step 2/5: Session created successfully";
+
+    // Step 3: Create reference spaces
+    LOG_INFO(LOG_TAG_XR) << "Step 3/5: Creating reference spaces...";
+    if (!createXRSpaces()) {
+        LOG_ERROR(LOG_TAG_XR) << "Step 3/5 FAILED - Cannot create reference spaces";
+        return false;
+    }
+    LOG_INFO(LOG_TAG_XR) << "Step 3/5: Reference spaces created";
+
+    // Step 4: Create swapchains for rendering
+    LOG_INFO(LOG_TAG_XR) << "Step 4/5: Creating swapchains...";
+    if (!createXRSwapchains()) {
+        LOG_ERROR(LOG_TAG_XR) << "Step 4/5 FAILED - Cannot create swapchains";
+        return false;
+    }
+    LOG_INFO(LOG_TAG_XR) << "Step 4/5: Swapchains created";
+
+    // Step 5: Create input actions
+    LOG_INFO(LOG_TAG_XR) << "Step 5/5: Setting up input actions...";
+    if (!createXRActions()) {
+        LOG_ERROR(LOG_TAG_XR) << "Step 5/5 FAILED - Cannot create input actions";
+        return false;
+    }
+    LOG_INFO(LOG_TAG_XR) << "Step 5/5: Input actions configured";
+
+    // Print summary
+    LOG_INFO(LOG_TAG_XR) << "========================================";
+    LOG_INFO(LOG_TAG_XR) << "OpenXR Startup Complete";
+    LOG_INFO(LOG_TAG_XR) << "  Runtime: " << m_runtimeName;
+    LOG_INFO(LOG_TAG_XR) << "  System: " << m_systemName;
+    LOG_INFO(LOG_TAG_XR) << "  Views: " << m_views.size();
+    if (!m_views.empty()) {
+        LOG_INFO(LOG_TAG_XR) << "  Resolution: " << m_views[0].width << "x" << m_views[0].height << " per eye";
+    }
+    LOG_INFO(LOG_TAG_XR) << "  Graphics API: " << (m_usingVulkan ? "Vulkan" : (m_usingOpenGL ? "OpenGL" : "None"));
+    LOG_INFO(LOG_TAG_XR) << "  Overlay mode: " << (m_overlayActive ? "active" : "inactive");
+    LOG_INFO(LOG_TAG_XR) << "========================================";
+
+    m_xrReady = true;
     return true;
 }
 

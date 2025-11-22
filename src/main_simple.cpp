@@ -13,6 +13,7 @@
 #include <iostream>
 #include <csignal>
 #include <cstring>
+#include <chrono>
 
 using namespace lst;
 
@@ -142,6 +143,192 @@ private:
 };
 
 // =============================================================================
+// VR Diagnostics Mode
+// =============================================================================
+
+/**
+ * RunVrDiagnostics - Check VR readiness without loading gameplay
+ *
+ * Tests:
+ * - OpenXR runtime availability
+ * - HMD detection and tracking
+ * - Controller tracking (left/right)
+ * - Basic frame loop stability
+ *
+ * Returns 0 on PASS, 1 on FAIL
+ */
+int RunVrDiagnostics(const std::string& logPath) {
+    LOG_INFO(LOG_TAG_DIAG) << "========================================";
+    LOG_INFO(LOG_TAG_DIAG) << "VR Diagnostics - Dojo Readiness Check";
+    LOG_INFO(LOG_TAG_DIAG) << "========================================";
+    LOG_INFO(LOG_TAG_DIAG) << "Target: Quest 3 + Virtual Desktop + SteamVR";
+    LOG_INFO(LOG_TAG_DIAG) << "";
+
+    // Track what we've verified
+    bool runtimeOk = false;
+    bool hmdOk = false;
+    bool leftControllerOk = false;
+    bool rightControllerOk = false;
+    bool frameLoopOk = false;
+    std::string failReason;
+
+    // Create engine for diagnostics
+    Engine engine;
+
+    EngineConfig config;
+    config.appName = "VR Diagnostics";
+    config.headlessMode = false;  // We need real VR
+    config.mockTracking = false;
+
+    LOG_INFO(LOG_TAG_DIAG) << "Test 1: OpenXR Initialization";
+    LOG_INFO(LOG_TAG_DIAG) << "--------------------------------------------";
+
+    if (!engine.initialize(config)) {
+        failReason = "OpenXR initialization failed";
+        LOG_ERROR(LOG_TAG_DIAG) << "FAIL: " << failReason;
+
+        // Print final result
+        std::cout << "\n";
+        std::cout << "========================================\n";
+        std::cout << "VR Diagnostics: FAIL\n";
+        std::cout << "Reason: " << failReason << "\n";
+        std::cout << "See log at: " << logPath << "\n";
+        std::cout << "========================================\n";
+
+        Logger::shutdown();
+        return 1;
+    }
+
+    runtimeOk = engine.isXRReady();
+    LOG_INFO(LOG_TAG_DIAG) << "Runtime/HMD: " << (runtimeOk ? "OK" : "FAIL");
+
+    if (!runtimeOk) {
+        failReason = "OpenXR runtime not ready";
+        LOG_ERROR(LOG_TAG_DIAG) << "FAIL: " << failReason;
+        engine.shutdown();
+
+        std::cout << "\n";
+        std::cout << "========================================\n";
+        std::cout << "VR Diagnostics: FAIL\n";
+        std::cout << "Reason: " << failReason << "\n";
+        std::cout << "See log at: " << logPath << "\n";
+        std::cout << "========================================\n";
+
+        Logger::shutdown();
+        return 1;
+    }
+
+    LOG_INFO(LOG_TAG_DIAG) << "";
+    LOG_INFO(LOG_TAG_DIAG) << "Test 2: Frame Loop & Tracking (3 seconds)";
+    LOG_INFO(LOG_TAG_DIAG) << "--------------------------------------------";
+
+    // Start session and run for a few seconds
+    engine.startSession();
+
+    int validHmdPoses = 0;
+    int validLeftPoses = 0;
+    int validRightPoses = 0;
+    int totalFrames = 0;
+    const int targetFrames = 270;  // ~3 seconds at 90Hz
+
+    auto startTime = std::chrono::steady_clock::now();
+    auto maxDuration = std::chrono::seconds(5);  // Safety timeout
+
+    while (totalFrames < targetFrames) {
+        auto elapsed = std::chrono::steady_clock::now() - startTime;
+        if (elapsed > maxDuration) {
+            LOG_WARN(LOG_TAG_DIAG) << "Timeout waiting for frames";
+            break;
+        }
+
+        if (!engine.tick()) {
+            LOG_WARN(LOG_TAG_DIAG) << "Frame tick failed at frame " << totalFrames;
+            break;
+        }
+
+        totalFrames++;
+
+        // Check tracking status
+        const auto& head = engine.getHeadPose();
+        const auto& left = engine.getLeftController();
+        const auto& right = engine.getRightController();
+
+        // Simple validity check - position should not be exactly zero
+        bool headValid = (head.position.x != 0 || head.position.y != 0 || head.position.z != 0);
+        if (headValid) validHmdPoses++;
+        if (left.isTracked) validLeftPoses++;
+        if (right.isTracked) validRightPoses++;
+
+        // Log progress every second
+        if (totalFrames % 90 == 0) {
+            LOG_DEBUG(LOG_TAG_DIAG) << "  Frame " << totalFrames << "/" << targetFrames
+                                    << " - HMD:" << validHmdPoses << " L:" << validLeftPoses
+                                    << " R:" << validRightPoses;
+        }
+    }
+
+    engine.endSession();
+
+    // Analyze results
+    frameLoopOk = (totalFrames >= targetFrames / 2);  // At least half the frames
+    hmdOk = (validHmdPoses > totalFrames / 2);
+    leftControllerOk = (validLeftPoses > 0);
+    rightControllerOk = (validRightPoses > 0);
+
+    LOG_INFO(LOG_TAG_DIAG) << "";
+    LOG_INFO(LOG_TAG_DIAG) << "Diagnostics Results:";
+    LOG_INFO(LOG_TAG_DIAG) << "--------------------------------------------";
+    LOG_INFO(LOG_TAG_DIAG) << "  Frames completed: " << totalFrames << "/" << targetFrames;
+    LOG_INFO(LOG_TAG_DIAG) << "  Frame loop: " << (frameLoopOk ? "OK" : "FAIL");
+    LOG_INFO(LOG_TAG_DIAG) << "  HMD tracking: " << validHmdPoses << "/" << totalFrames
+                           << " valid poses - " << (hmdOk ? "OK" : "FAIL");
+    LOG_INFO(LOG_TAG_DIAG) << "  Left controller: " << validLeftPoses << "/" << totalFrames
+                           << " tracked - " << (leftControllerOk ? "OK" : "not detected");
+    LOG_INFO(LOG_TAG_DIAG) << "  Right controller: " << validRightPoses << "/" << totalFrames
+                           << " tracked - " << (rightControllerOk ? "OK" : "not detected");
+
+    engine.shutdown();
+
+    // Determine overall result
+    bool overallPass = runtimeOk && frameLoopOk && hmdOk;
+    // Note: Controllers are optional - dojo can work with head tracking only
+
+    if (!overallPass) {
+        if (!frameLoopOk) failReason = "Frame loop unstable";
+        else if (!hmdOk) failReason = "HMD tracking invalid";
+        else failReason = "Unknown failure";
+    }
+
+    LOG_INFO(LOG_TAG_DIAG) << "";
+    LOG_INFO(LOG_TAG_DIAG) << "========================================";
+    if (overallPass) {
+        LOG_INFO(LOG_TAG_DIAG) << "VR Diagnostics: PASS";
+        LOG_INFO(LOG_TAG_DIAG) << "Ready for dojo prototype!";
+        if (!leftControllerOk || !rightControllerOk) {
+            LOG_WARN(LOG_TAG_DIAG) << "Note: Controllers not detected - some features may be limited";
+        }
+    } else {
+        LOG_ERROR(LOG_TAG_DIAG) << "VR Diagnostics: FAIL";
+        LOG_ERROR(LOG_TAG_DIAG) << "Reason: " << failReason;
+    }
+    LOG_INFO(LOG_TAG_DIAG) << "========================================";
+
+    // Print to stdout for easy CI/CD integration
+    std::cout << "\n";
+    std::cout << "========================================\n";
+    if (overallPass) {
+        std::cout << "VR Diagnostics: PASS - Ready for dojo prototype.\n";
+    } else {
+        std::cout << "VR Diagnostics: FAIL - Reason: " << failReason << "\n";
+        std::cout << "See log at: " << logPath << "\n";
+    }
+    std::cout << "========================================\n";
+
+    Logger::shutdown();
+    return overallPass ? 0 : 1;
+}
+
+// =============================================================================
 // Main
 // =============================================================================
 
@@ -150,6 +337,7 @@ int main(int argc, char* argv[]) {
     bool overlayMode = false;
     bool headlessMode = false;
     bool mockTracking = false;
+    bool vrDiagnostics = false;
     int maxFrames = 0;  // 0 = unlimited
     std::string scenePath;
     std::string logPath = "./logs/engine.log";
@@ -163,6 +351,7 @@ int main(int argc, char* argv[]) {
             std::cout << "Movement Dojo - Simplified Entry Point\n\n"
                       << "Usage: " << argv[0] << " [options]\n\n"
                       << "Options:\n"
+                      << "  --vr-diagnostics    Run VR readiness check and exit\n"
                       << "  --overlay           Run as VR overlay\n"
                       << "  --headless          Run without VR hardware (CLI testing)\n"
                       << "  --mock              Generate mock tracking data (with --headless)\n"
@@ -174,6 +363,8 @@ int main(int argc, char* argv[]) {
                       << "  --quiet, -q         Quiet mode (WARN+ only to console)\n"
                       << "  --help              Show this help\n";
             return 0;
+        } else if (strcmp(argv[i], "--vr-diagnostics") == 0) {
+            vrDiagnostics = true;
         } else if (strcmp(argv[i], "--overlay") == 0) {
             overlayMode = true;
         } else if (strcmp(argv[i], "--headless") == 0) {
@@ -209,8 +400,13 @@ int main(int argc, char* argv[]) {
     logConfig.consoleLogLevel = consoleLogLevel;
     logConfig.fileLogLevel = fileLogLevel;
     logConfig.appName = "Movement Dojo";
-    logConfig.enableColors = !quiet;  // No colors in quiet mode
+    logConfig.enableColors = !quiet;
     Logger::init(logConfig);
+
+    // Handle VR diagnostics mode
+    if (vrDiagnostics) {
+        return RunVrDiagnostics(logPath);
+    }
 
     // Log startup
     LOG_INFO(LOG_TAG_ENGINE) << "Startup begin";

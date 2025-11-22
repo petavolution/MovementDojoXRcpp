@@ -509,29 +509,102 @@ inline std::string xrResultToString(int result) {
 }
 
 /**
- * Log an OpenXR result with appropriate level
+ * Get troubleshooting hint for common OpenXR errors
+ * Tailored for Quest 3 + Virtual Desktop + SteamVR setup
+ */
+inline std::string xrErrorHint(int result) {
+    switch (result) {
+        case -2:  // XR_ERROR_RUNTIME_FAILURE
+            return "Runtime crashed or is unresponsive. Restart SteamVR and try again.";
+        case -5:  // XR_ERROR_INITIALIZATION_FAILED
+            return "OpenXR initialization failed. Check: (1) SteamVR is running, "
+                   "(2) SteamVR is set as default OpenXR runtime, (3) HMD is connected.";
+        case -8:  // XR_ERROR_EXTENSION_NOT_PRESENT
+            return "Required extension not available. Update SteamVR/graphics drivers.";
+        case -12: // XR_ERROR_INSTANCE_LOST
+            return "OpenXR instance lost. SteamVR may have crashed - restart it.";
+        case -15: // XR_ERROR_SESSION_LOST
+            return "VR session lost. Reconnect headset or restart SteamVR.";
+        case -16: // XR_ERROR_SYSTEM_INVALID
+            return "Invalid system. HMD may be disconnected or sleeping.";
+        case -31: // XR_ERROR_FORM_FACTOR_UNSUPPORTED
+            return "HMD form factor not supported by this runtime.";
+        case -32: // XR_ERROR_FORM_FACTOR_UNAVAILABLE
+            return "No HMD detected. For Quest 3 + Virtual Desktop: (1) Ensure Virtual Desktop "
+                   "streamer is running on PC, (2) Quest is connected and streaming, "
+                   "(3) SteamVR is running and detects the headset.";
+        case -43: // XR_ERROR_GRAPHICS_DEVICE_INVALID
+            return "Graphics device invalid. Check: (1) GPU drivers are up to date, "
+                   "(2) Vulkan/D3D is working, (3) No GPU resource conflicts.";
+        case -50: // XR_ERROR_RUNTIME_UNAVAILABLE
+            return "No OpenXR runtime available. Start SteamVR before launching the app.";
+        default:
+            return "";
+    }
+}
+
+/**
+ * Log an OpenXR result with appropriate level and troubleshooting hint
  */
 #define LOG_XR_RESULT(component, result, context) \
     do { \
         int _xr_res = (result); \
         if (_xr_res < 0) { \
             LOG_ERROR(component) << context << ": " << lst::xrResultToString(_xr_res); \
+            std::string _hint = lst::xrErrorHint(_xr_res); \
+            if (!_hint.empty()) { \
+                LOG_ERROR(component) << "  Hint: " << _hint; \
+            } \
         } else if (_xr_res > 0) { \
             LOG_WARN(component) << context << ": " << lst::xrResultToString(_xr_res); \
         } \
     } while(0)
 
 /**
- * Log an OpenXR result and return false on failure
+ * Log an OpenXR result and return false on failure (with troubleshooting hint)
  */
 #define LOG_XR_CHECK(component, result, context) \
     do { \
         int _xr_res = (result); \
         if (_xr_res < 0) { \
             LOG_ERROR(component) << context << " FAILED: " << lst::xrResultToString(_xr_res); \
+            std::string _hint = lst::xrErrorHint(_xr_res); \
+            if (!_hint.empty()) { \
+                LOG_ERROR(component) << "  Hint: " << _hint; \
+            } \
             return false; \
         } else if (_xr_res > 0) { \
             LOG_WARN(component) << context << ": " << lst::xrResultToString(_xr_res); \
+        } \
+    } while(0)
+
+/**
+ * Execute OpenXR call, store result, log on failure with hint
+ * Usage: XR_CHECK(result, xrCreateInstance(...), "Creating XR instance")
+ */
+#define XR_CHECK(resultVar, xrCall, context) \
+    do { \
+        resultVar = (xrCall); \
+        if (resultVar < 0) { \
+            LOG_ERROR(LOG_TAG_XR) << context << " FAILED: " << lst::xrResultToString(resultVar); \
+            std::string _hint = lst::xrErrorHint(resultVar); \
+            if (!_hint.empty()) { \
+                LOG_ERROR(LOG_TAG_XR) << "  Hint: " << _hint; \
+            } \
+            return false; \
+        } else if (resultVar > 0) { \
+            LOG_WARN(LOG_TAG_XR) << context << ": " << lst::xrResultToString(resultVar); \
+        } \
+    } while(0)
+
+/**
+ * Execute OpenXR call, log on failure but don't return (non-fatal)
+ */
+#define XR_WARN_ON_FAIL(resultVar, xrCall, context) \
+    do { \
+        resultVar = (xrCall); \
+        if (resultVar < 0) { \
+            LOG_WARN(LOG_TAG_XR) << context << ": " << lst::xrResultToString(resultVar); \
         } \
     } while(0)
 
@@ -556,5 +629,8 @@ inline std::string xrResultToString(int result) {
 // Analytics
 #define LOG_TAG_ANALYTICS "Analytics"
 #define LOG_TAG_PERF      "Perf"
+
+// Diagnostics
+#define LOG_TAG_DIAG      "Diag"
 
 } // namespace lst
