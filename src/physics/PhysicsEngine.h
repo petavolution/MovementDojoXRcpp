@@ -66,8 +66,8 @@ struct PhysicsBodyConfig {
     float ccdSweptSphereRadius = 0.05f; // Swept sphere radius for CCD test
 };
 
-// Collision callback
-using CollisionCallback = std::function<void(const CollisionInfo& info)>;
+// Collision callback (uses different name to avoid conflict with Types.h)
+using PhysicsCollisionCallback = std::function<void(const CollisionInfo& info)>;
 
 class PhysicsEngine {
 public:
@@ -106,7 +106,7 @@ public:
     std::vector<RayHit> raycastAll(const Vec3& origin, const Vec3& direction, float maxDistance) const;
 
     // Collision callbacks
-    void setCollisionCallback(CollisionCallback callback) { m_collisionCallback = callback; }
+    void setCollisionCallback(PhysicsCollisionCallback callback) { m_collisionCallback = callback; }
 
     // Gravity
     void setGravity(const Vec3& gravity) { m_gravity = gravity; }
@@ -142,7 +142,7 @@ private:
     float m_accumulator = 0.0f;
 
     std::vector<PhysicsBody> m_bodies;
-    CollisionCallback m_collisionCallback;
+    PhysicsCollisionCallback m_collisionCallback;
 
     // Bullet Physics handles (only used when HAS_BULLET=1)
     void* m_bulletWorld = nullptr;

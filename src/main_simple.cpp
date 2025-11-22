@@ -9,6 +9,7 @@
  */
 
 #include "core/Engine.h"
+#include "core/Logger.h"
 #include <iostream>
 #include <csignal>
 #include <cstring>
@@ -20,7 +21,7 @@ static Engine* g_engine = nullptr;
 
 void signalHandler(int signal) {
     if (signal == SIGINT || signal == SIGTERM) {
-        std::cout << "\nShutdown requested..." << std::endl;
+        LOG_INFO(LOG_TAG_ENGINE) << "Shutdown requested (signal " << signal << ")";
         if (g_engine) {
             g_engine->requestExit();
         }
@@ -95,9 +96,8 @@ public:
         m_displayTimer += ctx.deltaTime;
 
         if (m_displayTimer >= 10.0) {
-            std::cout << "[Stats] Time: " << static_cast<int>(ctx.totalTime) << "s"
-                      << " | Head Y: " << ctx.headPose.position.y << "m"
-                      << std::endl;
+            LOG_INFO(LOG_TAG_PERF) << "Time: " << static_cast<int>(ctx.totalTime) << "s"
+                                   << " | Head Y: " << ctx.headPose.position.y << "m";
             m_displayTimer = 0;
         }
     }
@@ -152,6 +152,11 @@ int main(int argc, char* argv[]) {
     bool mockTracking = false;
     int maxFrames = 0;  // 0 = unlimited
     std::string scenePath;
+    std::string logPath = "./logs/engine.log";
+    LogLevel consoleLogLevel = LogLevel::INFO;
+    LogLevel fileLogLevel = LogLevel::DEBUG;
+    bool verbose = false;
+    bool quiet = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -163,6 +168,10 @@ int main(int argc, char* argv[]) {
                       << "  --mock              Generate mock tracking data (with --headless)\n"
                       << "  --frames <n>        Run for n frames then exit (testing)\n"
                       << "  --scene <path>      Load USD scene file\n"
+                      << "  --log <path>        Log file path (default: ./logs/engine.log)\n"
+                      << "  --verbose, -v       Verbose console output (DEBUG level)\n"
+                      << "  --trace             Very verbose console output (TRACE level)\n"
+                      << "  --quiet, -q         Quiet mode (WARN+ only to console)\n"
                       << "  --help              Show this help\n";
             return 0;
         } else if (strcmp(argv[i], "--overlay") == 0) {
@@ -175,6 +184,18 @@ int main(int argc, char* argv[]) {
             maxFrames = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--scene") == 0 && i + 1 < argc) {
             scenePath = argv[++i];
+        } else if (strcmp(argv[i], "--log") == 0 && i + 1 < argc) {
+            logPath = argv[++i];
+        } else if (strcmp(argv[i], "--verbose") == 0 || strcmp(argv[i], "-v") == 0) {
+            verbose = true;
+            consoleLogLevel = LogLevel::DEBUG;
+        } else if (strcmp(argv[i], "--trace") == 0) {
+            verbose = true;
+            consoleLogLevel = LogLevel::TRACE;
+            fileLogLevel = LogLevel::TRACE;
+        } else if (strcmp(argv[i], "--quiet") == 0 || strcmp(argv[i], "-q") == 0) {
+            quiet = true;
+            consoleLogLevel = LogLevel::WARN;
         }
     }
 
@@ -182,11 +203,24 @@ int main(int argc, char* argv[]) {
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
-    std::cout << "=== Movement Dojo ===" << std::endl;
+    // Initialize logging system FIRST, before anything else
+    LogConfig logConfig;
+    logConfig.logFilePath = logPath;
+    logConfig.consoleLogLevel = consoleLogLevel;
+    logConfig.fileLogLevel = fileLogLevel;
+    logConfig.appName = "Movement Dojo";
+    logConfig.enableColors = !quiet;  // No colors in quiet mode
+    Logger::init(logConfig);
+
+    // Log startup
+    LOG_INFO(LOG_TAG_ENGINE) << "Startup begin";
+    LOG_INFO(LOG_TAG_ENGINE) << "Version: 0.1.0-dev";
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Log file: " << logPath;
+
     if (headlessMode) {
-        std::cout << "Mode: Headless" << (mockTracking ? " (with mock tracking)" : "") << std::endl;
+        LOG_INFO(LOG_TAG_ENGINE) << "Mode: Headless" << (mockTracking ? " (with mock tracking)" : "");
     } else {
-        std::cout << "Mode: " << (overlayMode ? "Overlay" : "Standalone") << std::endl;
+        LOG_INFO(LOG_TAG_ENGINE) << "Mode: " << (overlayMode ? "Overlay" : "Standalone");
     }
 
     // Create and configure engine
@@ -199,21 +233,27 @@ int main(int argc, char* argv[]) {
     config.headlessMode = headlessMode;
     config.mockTracking = mockTracking;
     config.logCallback = [](const std::string& msg) {
-        std::cout << "[Engine] " << msg << std::endl;
+        // Route engine callbacks through the logger
+        LOG_DEBUG(LOG_TAG_ENGINE) << msg;
     };
 
     // Initialize engine (handles XR, rendering, input)
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Initializing engine...";
     if (!engine.initialize(config)) {
-        std::cerr << "Failed to initialize engine" << std::endl;
+        LOG_ERROR(LOG_TAG_ENGINE) << "Failed to initialize engine";
+        Logger::shutdown();
         return 1;
     }
+    LOG_INFO(LOG_TAG_ENGINE) << "Engine initialized successfully";
 
     // Attach optional systems as plugins
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Attaching systems...";
     engine.addSystem<ControllerVisualizerSystem>();
     engine.addSystem<StatsDisplaySystem>();
     if (!headlessMode) {
         engine.addSystem<ProximityHapticsSystem>();
     }
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Systems attached";
 
     // In a full implementation, would also add:
     // engine.addSystem<PhysicsSystem>();
@@ -222,31 +262,39 @@ int main(int argc, char* argv[]) {
     // engine.addSystem<TrainingSystem>();
 
     if (headlessMode && maxFrames > 0) {
-        std::cout << "Running " << maxFrames << " frames in headless mode..." << std::endl;
+        LOG_INFO(LOG_TAG_ENGINE) << "Running " << maxFrames << " frames in headless mode...";
     } else {
-        std::cout << "Engine initialized. Press Ctrl+C to exit." << std::endl;
+        LOG_INFO(LOG_TAG_ENGINE) << "Ready. Press Ctrl+C to exit.";
     }
 
     // Start the session
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Starting session...";
     engine.startSession();
+    LOG_INFO(LOG_TAG_ENGINE) << "Session started";
 
     // Run the main loop
     if (maxFrames > 0) {
         // Frame-limited run for testing
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Entering frame-limited loop (" << maxFrames << " frames)";
         for (int frame = 0; frame < maxFrames && engine.tick(); frame++) {
             if (frame % 100 == 0) {
-                std::cout << "[Progress] Frame " << frame << "/" << maxFrames << std::endl;
+                LOG_DEBUG(LOG_TAG_ENGINE) << "Progress: Frame " << frame << "/" << maxFrames;
             }
         }
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Frame loop completed";
     } else {
         // Normal run
+        LOG_DEBUG(LOG_TAG_ENGINE) << "Entering main loop";
         engine.run();
     }
 
     // Cleanup
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Ending session...";
     engine.endSession();
+    LOG_DEBUG(LOG_TAG_ENGINE) << "Shutting down engine...";
     engine.shutdown();
 
-    std::cout << "Goodbye!" << std::endl;
+    LOG_INFO(LOG_TAG_ENGINE) << "Shutdown complete";
+    Logger::shutdown();
     return 0;
 }

@@ -57,6 +57,27 @@ typedef enum XrSessionState {
     XR_SESSION_STATE_EXITING = 8,
 } XrSessionState;
 
+// Common sub-structures (needed for assignment compatibility)
+struct XrQuaternionf {
+    float x, y, z, w;
+};
+
+struct XrVector3f {
+    float x, y, z;
+};
+
+struct XrPosef {
+    XrQuaternionf orientation;
+    XrVector3f position;
+};
+
+struct XrFovf {
+    float angleLeft;
+    float angleRight;
+    float angleUp;
+    float angleDown;
+};
+
 // Structures (minimal stubs)
 struct XrFrameState {
     int type;
@@ -69,16 +90,73 @@ struct XrFrameState {
 struct XrView {
     int type;
     void* next;
-    struct {
-        struct { float x, y, z, w; } orientation;
-        struct { float x, y, z; } position;
-    } pose;
-    struct {
-        float angleLeft;
-        float angleRight;
-        float angleUp;
-        float angleDown;
-    } fov;
+    XrPosef pose;
+    XrFovf fov;
+};
+
+struct XrSwapchainImageWaitInfo {
+    int type;
+    void* next;
+    XrDuration timeout;
+};
+
+struct XrSwapchainImageReleaseInfo {
+    int type;
+    void* next;
+};
+
+struct XrSwapchainImageAcquireInfo {
+    int type;
+    void* next;
+};
+
+struct XrViewState {
+    int type;
+    void* next;
+    uint64_t viewStateFlags;
+};
+
+struct XrViewLocateInfo {
+    int type;
+    void* next;
+    int viewConfigurationType;
+    XrTime displayTime;
+    XrSpace space;
+};
+
+struct XrActiveActionSet {
+    XrActionSet actionSet;
+    XrPath subactionPath;
+};
+
+struct XrActionsSyncInfo {
+    int type;
+    void* next;
+    uint32_t countActiveActionSets;
+    const XrActiveActionSet* activeActionSets;
+};
+
+struct XrSpaceLocation {
+    int type;
+    void* next;
+    uint64_t locationFlags;
+    XrPosef pose;
+};
+
+struct XrActionStateFloat {
+    int type;
+    void* next;
+    float currentState;
+    int changedSinceLastSync;
+    XrTime lastChangeTime;
+    int isActive;
+};
+
+struct XrActionStateGetInfo {
+    int type;
+    void* next;
+    XrAction action;
+    XrPath subactionPath;
 };
 
 struct XrViewConfigurationView {
@@ -92,27 +170,23 @@ struct XrViewConfigurationView {
     uint32_t maxSwapchainSampleCount;
 };
 
+struct XrRect2Di {
+    struct { int32_t x, y; } offset;
+    struct { int32_t width, height; } extent;
+};
+
+struct XrSwapchainSubImage {
+    XrSwapchain swapchain;
+    XrRect2Di imageRect;
+    uint32_t imageArrayIndex;
+};
+
 struct XrCompositionLayerProjectionView {
     int type;
     void* next;
-    struct {
-        struct { float x, y, z, w; } orientation;
-        struct { float x, y, z; } position;
-    } pose;
-    struct {
-        float angleLeft;
-        float angleRight;
-        float angleUp;
-        float angleDown;
-    } fov;
-    struct {
-        XrSwapchain swapchain;
-        uint32_t imageArrayIndex;
-        struct {
-            struct { int32_t x, y; } offset;
-            struct { int32_t width, height; } extent;
-        } imageRect;
-    } subImage;
+    XrPosef pose;
+    XrFovf fov;
+    XrSwapchainSubImage subImage;
 };
 
 // Stub function declarations (do nothing in headless mode)
@@ -183,6 +257,7 @@ inline XrResult xrEnumerateViewConfigurationViews(XrInstance, XrSystemId, int, u
 #define XR_TYPE_EXTENSION_PROPERTIES 0
 #define XR_TYPE_SYSTEM_GET_INFO 0
 #define XR_TYPE_SYSTEM_PROPERTIES 0
+#define XR_TYPE_ACTION_STATE_GET_INFO 0
 
 // Constants
 #define XR_MAX_APPLICATION_NAME_SIZE 128
@@ -200,5 +275,3 @@ inline XrResult xrEnumerateViewConfigurationViews(XrInstance, XrSystemId, int, u
 #define XR_SWAPCHAIN_USAGE_SAMPLED_BIT 2
 #define XR_SPACE_LOCATION_POSITION_VALID_BIT 1
 #define XR_ENVIRONMENT_BLEND_MODE_OPAQUE 1
-
-#endif // NO_OPENXR
