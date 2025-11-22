@@ -370,7 +370,8 @@ void WaveSpawner::checkDronesFiring(float /*deltaTime*/) {
 
             drone->resetFireTimer();
 
-            LOG_DEBUG(LOG_TAG_SPAWNER) << "Drone " << drone->getId() << " fired projectile " << projId;
+            LOG_INFO(LOG_TAG_SPAWNER) << "Drone " << drone->getId() << " fired projectile " << projId
+                                       << " (total fired: " << m_metrics.projectilesFired << ")";
         }
     }
 }
@@ -395,9 +396,24 @@ void WaveSpawner::updateProjectiles(float deltaTime) {
                                                 << m_metrics.projectilesBlocked << ")";
                 } else if (proj->wasMissed()) {
                     m_metrics.projectilesMissed++;
-                    // Check if it would have hit the player (simplified collision)
-                    // For now, assume missed projectiles that passed player count as hits
-                    notifyPlayerHit(1);
+                    // Check if projectile would have hit the player body
+                    // Player body is a cylinder/sphere around head position
+                    const float PLAYER_BODY_RADIUS = 0.4f;  // ~40cm torso radius
+                    const float PLAYER_HEIGHT = 1.8f;       // Standing height
+                    Vec3 projPos = proj->getPosition();
+
+                    // Simple cylinder check: within radius in X/Z and below head height
+                    float horizontalDistSq = (projPos.x - m_playerPosition.x) * (projPos.x - m_playerPosition.x) +
+                                             (projPos.z - m_playerPosition.z) * (projPos.z - m_playerPosition.z);
+                    bool withinRadius = horizontalDistSq < (PLAYER_BODY_RADIUS * PLAYER_BODY_RADIUS);
+                    bool withinHeight = projPos.y > 0.3f && projPos.y < PLAYER_HEIGHT;
+
+                    if (withinRadius && withinHeight) {
+                        LOG_DEBUG(LOG_TAG_SPAWNER) << "Projectile hit player body!";
+                        notifyPlayerHit(1);
+                    } else {
+                        LOG_DEBUG(LOG_TAG_SPAWNER) << "Projectile missed (didn't hit body)";
+                    }
                 }
             }
         }
