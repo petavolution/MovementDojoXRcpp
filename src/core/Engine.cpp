@@ -575,16 +575,24 @@ bool Engine::createXRSpaces() {
 }
 
 bool Engine::createXRSwapchains() {
+    LOG_INFO("XR") << "Creating swapchains for " << m_viewConfigViews.size() << " views";
+
     // Create swapchain for each view
-    for (const auto& viewConfig : m_viewConfigViews) {
+    for (size_t i = 0; i < m_viewConfigViews.size(); i++) {
+        const auto& viewConfig = m_viewConfigViews[i];
         SwapchainData swapchain;
         swapchain.width = viewConfig.recommendedImageRectWidth;
         swapchain.height = viewConfig.recommendedImageRectHeight;
+        swapchain.acquiredIndex = 0;
+        swapchain.imageAcquired = false;
+
+        LOG_DEBUG("XR") << "  View " << i << ": " << swapchain.width << "x" << swapchain.height;
 
         XrSwapchainCreateInfo swapchainInfo = {XR_TYPE_SWAPCHAIN_CREATE_INFO};
-        swapchainInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
-        swapchainInfo.format = 0;  // Would be set based on graphics API
-        swapchainInfo.sampleCount = 1;
+        swapchainInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
+                                   XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+        swapchainInfo.format = 0;  // Graphics binding sets actual format
+        swapchainInfo.sampleCount = viewConfig.recommendedSwapchainSampleCount;
         swapchainInfo.width = swapchain.width;
         swapchainInfo.height = swapchain.height;
         swapchainInfo.faceCount = 1;
@@ -593,12 +601,22 @@ bool Engine::createXRSwapchains() {
 
         XrResult result = xrCreateSwapchain(m_xrSession, &swapchainInfo, &swapchain.handle);
         if (XR_FAILED(result)) {
+            LOG_WARN("XR") << "Failed to create swapchain " << i << ": " << xrResultToString(result);
             swapchain.handle = XR_NULL_HANDLE;
+        } else {
+            // Enumerate swapchain images
+            uint32_t imageCount = 0;
+            xrEnumerateSwapchainImages(swapchain.handle, 0, &imageCount, nullptr);
+            LOG_DEBUG("XR") << "  Swapchain " << i << " has " << imageCount << " images";
         }
 
         m_swapchains.push_back(swapchain);
     }
 
+    // Initialize projection views array
+    m_projectionViews.resize(m_viewConfigViews.size(), {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW});
+
+    LOG_INFO("XR") << "Created " << m_swapchains.size() << " swapchains";
     return true;
 }
 
@@ -752,10 +770,41 @@ void Engine::endXRFrame() {
     XrFrameEndInfo endInfo = {XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = m_predictedDisplayTime;
     endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    endInfo.layerCount = 0;
-    endInfo.layers = nullptr;
 
-    xrEndFrame(m_xrSession, &endInfo);
+    // Build projection layer if we should render
+    XrCompositionLayerProjection projectionLayer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    const XrCompositionLayerBaseHeader* layers[1] = {nullptr};
+
+    if (m_shouldRender && !m_projectionViews.empty() && !m_swapchains.empty()) {
+        // Verify we have valid swapchains
+        bool hasValidSwapchains = true;
+        for (const auto& sc : m_swapchains) {
+            if (sc.handle == XR_NULL_HANDLE) {
+                hasValidSwapchains = false;
+                break;
+            }
+        }
+
+        if (hasValidSwapchains) {
+            projectionLayer.space = m_stageSpace;
+            projectionLayer.viewCount = static_cast<uint32_t>(m_projectionViews.size());
+            projectionLayer.views = m_projectionViews.data();
+
+            layers[0] = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&projectionLayer);
+            endInfo.layerCount = 1;
+            endInfo.layers = layers;
+        }
+    }
+
+    // If not rendering (e.g., HMD not visible), submit empty frame
+    if (endInfo.layerCount == 0) {
+        endInfo.layers = nullptr;
+    }
+
+    XrResult result = xrEndFrame(m_xrSession, &endInfo);
+    if (XR_FAILED(result)) {
+        LOG_WARN("XR") << "xrEndFrame failed: " << xrResultToString(result);
+    }
 }
 
 void Engine::locateViews() {
@@ -857,17 +906,71 @@ void Engine::syncActions() {
 // =============================================================================
 
 void Engine::render() {
-    // This is where actual GPU rendering would happen
-    // For now, just process draw commands conceptually
+    // Acquire swapchain images and render each view
+    for (size_t viewIdx = 0; viewIdx < m_views.size() && viewIdx < m_swapchains.size(); viewIdx++) {
+        auto& swapchain = m_swapchains[viewIdx];
 
-    for (const auto& obj : m_sceneObjects) {
-        // Would render mesh with material
-        (void)obj;
+        if (swapchain.handle == XR_NULL_HANDLE) {
+            continue;
+        }
+
+        // Acquire swapchain image
+        XrSwapchainImageAcquireInfo acquireInfo = {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+        XrResult result = xrAcquireSwapchainImage(swapchain.handle, &acquireInfo, &swapchain.acquiredIndex);
+        if (XR_FAILED(result)) {
+            LOG_WARN("Render") << "Failed to acquire swapchain image for view " << viewIdx;
+            continue;
+        }
+        swapchain.imageAcquired = true;
+
+        // Wait for swapchain image to be available
+        XrSwapchainImageWaitInfo waitInfo = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+        waitInfo.timeout = XR_INFINITE_DURATION;
+        result = xrWaitSwapchainImage(swapchain.handle, &waitInfo);
+        if (XR_FAILED(result)) {
+            LOG_WARN("Render") << "Failed to wait for swapchain image for view " << viewIdx;
+        }
+
+        // ====================================================================
+        // GPU RENDERING WOULD HAPPEN HERE
+        // In a real implementation with Vulkan/OpenGL:
+        // 1. Bind framebuffer with swapchain image as color attachment
+        // 2. Clear to m_config.clearColor
+        // 3. Set viewport to (0, 0, swapchain.width, swapchain.height)
+        // 4. Calculate view and projection matrices from view.pose and view.fov
+        // 5. Render scene objects
+        // 6. Render debug draw commands
+        // ====================================================================
+
+        // Build projection view for this eye
+        XrCompositionLayerProjectionView& projView = m_projectionViews[viewIdx];
+        projView.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
+        projView.pose = m_xrViews[viewIdx].pose;
+        projView.fov = m_xrViews[viewIdx].fov;
+        projView.subImage.swapchain = swapchain.handle;
+        projView.subImage.imageArrayIndex = 0;
+        projView.subImage.imageRect.offset = {0, 0};
+        projView.subImage.imageRect.extent = {swapchain.width, swapchain.height};
+
+        // Release swapchain image
+        XrSwapchainImageReleaseInfo releaseInfo = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+        result = xrReleaseSwapchainImage(swapchain.handle, &releaseInfo);
+        if (XR_FAILED(result)) {
+            LOG_WARN("Render") << "Failed to release swapchain image for view " << viewIdx;
+        }
+        swapchain.imageAcquired = false;
     }
 
-    for (const auto& cmd : m_drawCommands) {
-        // Would draw debug primitives
-        (void)cmd;
+    // Track rendered objects for statistics
+    size_t objectCount = m_sceneObjects.size();
+    size_t drawCommandCount = m_drawCommands.size();
+
+    // Log render stats periodically
+    static int frameCounter = 0;
+    if (++frameCounter % 300 == 0) {
+        LOG_DEBUG("Render") << "Frame " << frameCounter
+                           << ": " << objectCount << " objects, "
+                           << drawCommandCount << " draw commands";
     }
 }
 

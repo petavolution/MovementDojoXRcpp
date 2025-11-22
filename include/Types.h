@@ -57,7 +57,7 @@ struct Quat {
     float dot(const Quat& other) const;
 
     static Quat fromAxisAngle(const Vec3& axis, float angle);
-    static Quat identity() { return Quat(0, 0, 0, 1); }
+    static Quat identity() { return Quat(1, 0, 0, 0); }  // w=1, x=y=z=0
     static Quat slerp(const Quat& a, const Quat& b, float t);
 };
 

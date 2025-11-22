@@ -30,30 +30,32 @@ Vec3 Vec3::cross(const Vec3& a, const Vec3& b) {
 }
 
 // Quat implementation
+// Note: Quat constructor is Quat(w, x, y, z)
 Quat Quat::operator*(const Quat& q) const {
+    // Hamilton product: (w1, v1) * (w2, v2) = (w1*w2 - v1.v2, w1*v2 + w2*v1 + v1 x v2)
     return Quat(
-        w * q.x + x * q.w + y * q.z - z * q.y,
-        w * q.y - x * q.z + y * q.w + z * q.x,
-        w * q.z + x * q.y - y * q.x + z * q.w,
-        w * q.w - x * q.x - y * q.y - z * q.z
+        w * q.w - x * q.x - y * q.y - z * q.z,  // w component
+        w * q.x + x * q.w + y * q.z - z * q.y,  // x component
+        w * q.y - x * q.z + y * q.w + z * q.x,  // y component
+        w * q.z + x * q.y - y * q.x + z * q.w   // z component
     );
 }
 
 Vec3 Quat::rotate(const Vec3& v) const {
-    // q * v * q^-1
-    Quat qv(v.x, v.y, v.z, 0);
+    // q * v * q^-1 where v is represented as quaternion (0, v)
+    Quat qv(0, v.x, v.y, v.z);  // w=0, xyz=v
     Quat result = (*this) * qv * conjugate();
     return Vec3(result.x, result.y, result.z);
 }
 
 Quat Quat::conjugate() const {
-    return Quat(-x, -y, -z, w);
+    return Quat(w, -x, -y, -z);  // conjugate negates xyz, keeps w
 }
 
 Quat Quat::normalized() const {
-    float len = std::sqrt(x * x + y * y + z * z + w * w);
+    float len = std::sqrt(w * w + x * x + y * y + z * z);
     if (len > 0.0001f) {
-        return Quat(x / len, y / len, z / len, w / len);
+        return Quat(w / len, x / len, y / len, z / len);
     }
     return Quat::identity();
 }
@@ -62,7 +64,8 @@ Quat Quat::fromAxisAngle(const Vec3& axis, float angle) {
     Vec3 n = axis.normalized();
     float halfAngle = angle * 0.5f;
     float s = std::sin(halfAngle);
-    return Quat(n.x * s, n.y * s, n.z * s, std::cos(halfAngle));
+    float c = std::cos(halfAngle);
+    return Quat(c, n.x * s, n.y * s, n.z * s);  // w=cos, xyz=sin*axis
 }
 
 float Quat::dot(const Quat& other) const {
@@ -71,22 +74,22 @@ float Quat::dot(const Quat& other) const {
 
 Quat Quat::slerp(const Quat& a, const Quat& b, float t) {
     // Compute dot product (cosine of angle between quaternions)
-    float cosTheta = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+    float cosTheta = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z;
 
     // Use shorter path - if dot is negative, negate one quaternion
     Quat bAdjusted = b;
     if (cosTheta < 0.0f) {
-        bAdjusted = Quat(-b.x, -b.y, -b.z, -b.w);
+        bAdjusted = Quat(-b.w, -b.x, -b.y, -b.z);  // w, x, y, z order
         cosTheta = -cosTheta;
     }
 
     // If quaternions are very close, use linear interpolation to avoid division by zero
     if (cosTheta > 0.9995f) {
         Quat result(
+            a.w + t * (bAdjusted.w - a.w),  // w first
             a.x + t * (bAdjusted.x - a.x),
             a.y + t * (bAdjusted.y - a.y),
-            a.z + t * (bAdjusted.z - a.z),
-            a.w + t * (bAdjusted.w - a.w)
+            a.z + t * (bAdjusted.z - a.z)
         );
         return result.normalized();
     }
@@ -98,10 +101,10 @@ Quat Quat::slerp(const Quat& a, const Quat& b, float t) {
     float wb = std::sin(t * theta) / sinTheta;
 
     return Quat(
+        wa * a.w + wb * bAdjusted.w,  // w first
         wa * a.x + wb * bAdjusted.x,
         wa * a.y + wb * bAdjusted.y,
-        wa * a.z + wb * bAdjusted.z,
-        wa * a.w + wb * bAdjusted.w
+        wa * a.z + wb * bAdjusted.z
     );
 }
 

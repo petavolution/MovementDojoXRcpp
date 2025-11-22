@@ -10,6 +10,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_TESTS "Build unit tests" ON)
 option(ENABLE_VALIDATION "Enable OpenXR validation layer" ON)
 option(USE_SYSTEM_USD "Use system-installed USD" OFF)
+option(HEADLESS_MODE "Build for headless/CLI testing without GPU" OFF)
 
 # Output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -19,29 +20,52 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # Find packages
 find_package(PkgConfig REQUIRED)
 find_package(Threads REQUIRED)
-find_package(Vulkan REQUIRED)
+
+# Vulkan - required for GPU rendering, optional for headless
+if(NOT HEADLESS_MODE)
+    find_package(Vulkan REQUIRED)
+else()
+    find_package(Vulkan QUIET)
+    add_compile_definitions(HEADLESS_BUILD=1)
+endif()
 
 # OpenXR - try find_package first, fall back to pkg-config
+# Optional in headless mode
 find_package(OpenXR QUIET)
-if(NOT OpenXR_FOUND)
-    pkg_check_modules(OPENXR REQUIRED openxr)
-    set(OPENXR_INCLUDE_DIRS ${OPENXR_INCLUDE_DIRS})
-    set(OPENXR_LIBRARIES ${OPENXR_LIBRARIES})
-else()
+if(OpenXR_FOUND)
     set(OPENXR_INCLUDE_DIRS "")
     set(OPENXR_LIBRARIES OpenXR::openxr_loader)
+    set(HAS_OPENXR TRUE)
+else()
+    pkg_check_modules(OPENXR openxr)
+    if(OPENXR_FOUND)
+        set(OPENXR_INCLUDE_DIRS ${OPENXR_INCLUDE_DIRS})
+        set(OPENXR_LIBRARIES ${OPENXR_LIBRARIES})
+        set(HAS_OPENXR TRUE)
+    elseif(HEADLESS_MODE)
+        message(STATUS "OpenXR not found - building in pure headless mode")
+        set(OPENXR_INCLUDE_DIRS "")
+        set(OPENXR_LIBRARIES "")
+        set(HAS_OPENXR FALSE)
+        add_compile_definitions(NO_OPENXR=1)
+    else()
+        message(FATAL_ERROR "OpenXR required. Use -DHEADLESS_MODE=ON for testing without XR.")
+    endif()
 endif()
 
-# GLFW for windowing
+# GLFW for windowing (optional in headless mode)
 find_package(glfw3 QUIET)
 if(NOT glfw3_FOUND)
-    pkg_check_modules(GLFW3 REQUIRED glfw3)
+    pkg_check_modules(GLFW3 glfw3)
+    if(NOT GLFW3_FOUND AND NOT HEADLESS_MODE)
+        message(FATAL_ERROR "GLFW3 required. Use -DHEADLESS_MODE=ON for testing without GLFW.")
+    endif()
 endif()
 
-# GLM for math
+# GLM for math (optional - use internal math if not found)
 find_package(glm QUIET)
 if(NOT glm_FOUND)
-    pkg_check_modules(GLM REQUIRED glm)
+    pkg_check_modules(GLM glm)
 endif()
 
 # USD - optional, can use stub if not available
@@ -66,9 +90,12 @@ endif()
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
-    ${Vulkan_INCLUDE_DIRS}
     ${OPENXR_INCLUDE_DIRS}
 )
+
+if(Vulkan_FOUND)
+    include_directories(${Vulkan_INCLUDE_DIRS})
+endif()
 
 if(glfw3_FOUND)
     # Modern CMake target available
@@ -174,18 +201,23 @@ add_executable(lightsaber_trainer
 # Link libraries
 target_link_libraries(lightsaber_trainer
     ${OPENXR_LIBRARIES}
-    ${Vulkan_LIBRARIES}
     Threads::Threads
 )
 
+if(Vulkan_FOUND)
+    target_link_libraries(lightsaber_trainer ${Vulkan_LIBRARIES})
+endif()
+
 if(glfw3_FOUND)
     target_link_libraries(lightsaber_trainer glfw)
-else()
+elseif(GLFW3_FOUND)
     target_link_libraries(lightsaber_trainer ${GLFW3_LIBRARIES})
 endif()
 
 if(glm_FOUND)
     target_link_libraries(lightsaber_trainer glm::glm)
+elseif(GLM_FOUND)
+    target_link_libraries(lightsaber_trainer ${GLM_LIBRARIES})
 endif()
 
 if(USD_FOUND)
@@ -216,13 +248,16 @@ add_executable(movement_dojo_simple
 
 target_link_libraries(movement_dojo_simple
     ${OPENXR_LIBRARIES}
-    ${Vulkan_LIBRARIES}
     Threads::Threads
 )
 
+if(Vulkan_FOUND)
+    target_link_libraries(movement_dojo_simple ${Vulkan_LIBRARIES})
+endif()
+
 if(glfw3_FOUND)
     target_link_libraries(movement_dojo_simple glfw)
-else()
+elseif(GLFW3_FOUND)
     target_link_libraries(movement_dojo_simple ${GLFW3_LIBRARIES})
 endif()
 
@@ -232,10 +267,31 @@ elseif(Bullet_FOUND)
     target_link_libraries(movement_dojo_simple Bullet::Bullet)
 endif()
 
+# =============================================================================
+# Headless Test Binary - Tests core systems without XR
+# =============================================================================
+
+if(HEADLESS_MODE)
+    add_executable(headless_test
+        tests/test_headless.cpp
+        src/core/Math.cpp
+        ${ANALYTICS_SOURCES}
+        ${PROGRESSION_SOURCES}
+    )
+
+    target_compile_definitions(headless_test PRIVATE HEADLESS_BUILD=1)
+    target_link_libraries(headless_test Threads::Threads)
+
+    # Add test
+    add_test(NAME HeadlessSystemsTest COMMAND headless_test)
+endif()
+
 # Tests
 if(BUILD_TESTS)
     enable_testing()
-    add_subdirectory(tests)
+    if(NOT HEADLESS_MODE)
+        add_subdirectory(tests)
+    endif()
 endif()
 
 # Installation

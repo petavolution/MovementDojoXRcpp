@@ -16,7 +16,14 @@
 #pragma once
 
 #include "../../include/Types.h"
+
+// Include OpenXR or stub headers depending on build
+#ifdef NO_OPENXR
+#include "../../include/openxr_stub.h"
+#else
 #include <openxr/openxr.h>
+#endif
+
 #include <vector>
 #include <string>
 #include <functional>
@@ -286,8 +293,13 @@ private:
         int32_t width;
         int32_t height;
         std::vector<uint32_t> images;
+        uint32_t acquiredIndex;  // Currently acquired image index
+        bool imageAcquired;      // Whether an image is currently acquired
     };
     std::vector<SwapchainData> m_swapchains;
+
+    // Projection layers for frame submission
+    std::vector<XrCompositionLayerProjectionView> m_projectionViews;
 
     // Views
     std::vector<XRView> m_views;
