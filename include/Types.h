@@ -45,10 +45,10 @@ struct Vec3 {
 };
 
 struct Quat {
-    float x, y, z, w;
+    float w, x, y, z;
 
-    Quat() : x(0), y(0), z(0), w(1) {}
-    Quat(float x_, float y_, float z_, float w_) : x(x_), y(y_), z(z_), w(w_) {}
+    Quat() : w(1), x(0), y(0), z(0) {}
+    Quat(float w_, float x_, float y_, float z_) : w(w_), x(x_), y(y_), z(z_) {}
 
     Quat operator*(const Quat& other) const;
     Vec3 rotate(const Vec3& v) const;
@@ -57,7 +57,7 @@ struct Quat {
     float dot(const Quat& other) const;
 
     static Quat fromAxisAngle(const Vec3& axis, float angle);
-    static Quat identity() { return Quat(0, 0, 0, 1); }
+    static Quat identity() { return Quat(1, 0, 0, 0); }  // w=1, x=y=z=0
     static Quat slerp(const Quat& a, const Quat& b, float t);
 };
 
@@ -153,7 +153,15 @@ struct SceneObject {
 // XR View (per eye)
 struct XRView {
     Transform pose;
-    float fov[4]; // left, right, up, down angles
+
+    // Field of view angles in radians
+    struct {
+        float angleLeft;
+        float angleRight;
+        float angleUp;
+        float angleDown;
+    } fov;
+
     int width;
     int height;
 };
@@ -168,6 +176,8 @@ enum class Hand {
 struct ControllerState {
     Hand hand;
     Transform pose;
+    Vec3 position;      // Direct position access
+    Quat orientation;   // Direct orientation access
     bool isTracked;
     bool triggerPressed;
     float triggerValue;
@@ -177,6 +187,21 @@ struct ControllerState {
     bool secondaryButtonPressed;
     Vec3 velocity;
     Vec3 angularVelocity;
+
+    ControllerState()
+        : hand(Hand::Left)
+        , pose()
+        , position()
+        , orientation()
+        , isTracked(false)
+        , triggerPressed(false)
+        , triggerValue(0)
+        , gripPressed(false)
+        , gripValue(0)
+        , primaryButtonPressed(false)
+        , secondaryButtonPressed(false)
+        , velocity()
+        , angularVelocity() {}
 };
 
 // Haptic event

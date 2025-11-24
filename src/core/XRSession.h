@@ -1,7 +1,14 @@
 #pragma once
 
 #include "Types.h"
+
+// Include OpenXR or stub headers depending on build
+#ifdef NO_OPENXR
+#include "../../include/openxr_stub.h"
+#else
 #include <openxr/openxr.h>
+#endif
+
 #include <vector>
 #include <string>
 #include <functional>

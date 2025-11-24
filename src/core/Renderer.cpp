@@ -81,10 +81,10 @@ void Renderer::renderView(int viewIndex, const XRView& view) {
     m_viewMatrix = Mat4::rotation(invRotation) * Mat4::translation(invPosition);
 
     // Build asymmetric projection matrix from FoV
-    float left = std::tan(view.fov[0]);
-    float right = std::tan(view.fov[1]);
-    float up = std::tan(view.fov[2]);
-    float down = std::tan(view.fov[3]);
+    float left = std::tan(view.fov.angleLeft);
+    float right = std::tan(view.fov.angleRight);
+    float up = std::tan(view.fov.angleUp);
+    float down = std::tan(view.fov.angleDown);
 
     float nearZ = 0.05f;
     float farZ = 100.0f;
